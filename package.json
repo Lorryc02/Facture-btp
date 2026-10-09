@@ -1,0 +1,46 @@
+{
+  "name": "devis-pro",
+  "productName": "DevisPro",
+  "version": "1.0.0",
+  "description": "Devis et factures A4 – RAZAFIMAHEFA Harry Luc",
+  "main": "main.js",
+  "author": "RAZAFIMAHEFA Harry Luc",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/calc.test.js tests/numberToWords.test.js",
+    "selftest": "electron . --selftest",
+    "icon": "node scripts/make-icon.js",
+    "build": "electron-builder --win dir",
+    "zip": "node scripts/zip.js"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "mg.razafimahefa.devispro",
+    "productName": "DevisPro",
+    "copyright": "RAZAFIMAHEFA Harry Luc",
+    "asar": true,
+    "electronLanguages": [
+      "fr"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true
+    }
+  }
+}
