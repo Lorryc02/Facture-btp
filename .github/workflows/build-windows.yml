@@ -1,0 +1,54 @@
+# Construit DevisPro sous Windows, lance DevisPro.exe en mode autotest
+# (vérifie qu'il démarre et que le PDF est produit), puis publie le zip.
+name: Build Windows
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Tests unitaires
+        run: npm test
+
+      - name: Build (electron-builder --win dir)
+        run: npm run build
+
+      - name: Lancer DevisPro.exe une fois (autotest)
+        shell: pwsh
+        run: |
+          $sortie = Join-Path $PWD 'dist\selftest-exe'
+          $p = Start-Process -FilePath 'dist\win-unpacked\DevisPro.exe' `
+                 -ArgumentList '--selftest', "--selftest-dir=$sortie" -Wait -PassThru
+          Get-Content (Join-Path $sortie 'rapport.txt')
+          if ($p.ExitCode -ne 0) { throw "DevisPro.exe a échoué (code $($p.ExitCode))" }
+
+      - name: Créer le zip
+        run: npm run zip
+
+      - name: Publier le zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevisPro-win-unpacked
+          path: dist/DevisPro-win-unpacked.zip
+
+      - name: Publier l'aperçu PDF / PNG produit sous Windows
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autotest-windows
+          path: dist/selftest-exe
+          if-no-files-found: ignore

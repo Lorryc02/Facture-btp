@@ -60,9 +60,11 @@ src/
   js/storage.js           brouillon automatique, enregistrer / ouvrir / supprimer
   js/app.js               événements, rendu, barre d'outils, autotest de l'interface
 tests/                    calc.test.js, numberToWords.test.js (node --test)
-scripts/                  make-icon.js (icône), zip.js (archive du build)
+scripts/                  make-icon.js (icône), zip.js (archive du build), outils.js (CRC-32)
 reference/facture-modele.jpg   modèle à reproduire
-build/icon.ico            icône générée par scripts/make-icon.js
+docs/apercu.png           aperçu du rendu (copie de dist/selftest/apercu.png)
+build/icon.ico            icône générée par scripts/make-icon.js (+ icon.png, aperçu)
+.github/workflows/        build Windows + lancement de DevisPro.exe --selftest + zip
 .tools/                   Node portable éventuel (ignoré par git)
 dist/                     sorties (build, selftest) — ignoré par git
 ```
