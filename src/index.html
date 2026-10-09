@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <!-- 100 % hors-ligne : aucune ressource externe autorisée -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'">
+  <title>DevisPro</title>
+  <link rel="stylesheet" href="css/document.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <!-- ===================== Barre d'outils (masquée à l'impression) ===================== -->
+  <header class="barre-outils" role="toolbar" aria-label="Barre d'outils">
+    <div class="groupe">
+      <button type="button" id="btn-nouveau" title="Nouveau document (Ctrl+N)">Nouveau</button>
+      <button type="button" id="btn-ouvrir" title="Ouvrir un document enregistré (Ctrl+O)">Ouvrir</button>
+      <button type="button" id="btn-enregistrer" title="Enregistrer le document (Ctrl+S)">Enregistrer</button>
+    </div>
+    <div class="groupe">
+      <button type="button" id="btn-pdf" title="Exporter en PDF (Ctrl+E)">Exporter PDF</button>
+      <button type="button" id="btn-imprimer" title="Imprimer (Ctrl+P)">Imprimer</button>
+    </div>
+    <div class="groupe bascule-type" role="group" aria-label="Type de document">
+      <button type="button" data-type="devis" aria-pressed="false">Devis</button>
+      <button type="button" data-type="facture" aria-pressed="true">Facture</button>
+    </div>
+    <div class="groupe">
+      <button type="button" id="btn-tva" title="Taux de TVA">TVA</button>
+      <button type="button" id="btn-avance" title="Avance (acompte)">Avance</button>
+      <button type="button" id="btn-paiement" title="Modes de paiement">Paiement</button>
+      <button type="button" id="btn-signer" title="Signature et cachet">Signer</button>
+    </div>
+    <div class="etat-document" id="etat-document" aria-live="polite"></div>
+  </header>
+
+  <!-- ===================== Page A4 : la page EST le formulaire ===================== -->
+  <main class="zone-travail" id="zone-travail">
+    <article class="page" id="page" aria-label="Document A4">
+
+      <header class="entete">
+        <!-- En-tête fixe de l'émetteur (rempli depuis js/emetteur.js) -->
+        <div class="emetteur" id="emetteur"></div>
+
+        <div class="colonne-droite">
+          <div class="ligne-date">
+            <input type="text" id="champ-ville" class="champ ville" data-champ="ville"
+                   spellcheck="false" autocomplete="off" aria-label="Ville">
+            <span class="conteneur-date">
+              <button type="button" id="date-texte" class="date-texte" title="Choisir la date"></button>
+              <input type="date" id="champ-date" class="selecteur-date" tabindex="-1" aria-label="Date">
+            </span>
+          </div>
+          <textarea id="champ-destinataire" class="champ destinataire" data-champ="destinataire" rows="1"
+                    spellcheck="false" aria-label="Destinataire"
+                    placeholder="Nom du client&#10;Adresse&#10;Stat : …&#10;Nif : …"></textarea>
+        </div>
+      </header>
+
+      <div class="ligne-numero">
+        <span id="libelle-numero" class="libelle-numero">FACTURE N°:</span><input
+          type="text" id="champ-numero" class="champ numero" data-champ="numero"
+          spellcheck="false" autocomplete="off" aria-label="Numéro du document">
+      </div>
+
+      <div class="ligne-objet">
+        <span class="libelle-objet">OBJET:</span>
+        <textarea id="champ-objet" class="champ objet" data-champ="objet" rows="1"
+                  spellcheck="false" aria-label="Objet" placeholder="Objet du document"></textarea>
+      </div>
+
+      <table class="tableau" id="tableau">
+        <colgroup>
+          <col class="col-num"><col class="col-designation"><col class="col-unite">
+          <col class="col-quantite"><col class="col-pu"><col class="col-montant">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>DESIGNATIONS DES OUVRAGES</th>
+            <th>UNITE</th>
+            <th>QUANTITE</th>
+            <th>PRIX UNITAIRE</th>
+            <th>MONTANT</th>
+          </tr>
+        </thead>
+        <!-- toutes les lignes sauf la dernière -->
+        <tbody id="corps-lignes"></tbody>
+        <!-- dernière ligne + totaux : ce bloc n'est jamais coupé par un saut de page -->
+        <tbody id="bloc-fin" class="bloc-fin"></tbody>
+      </table>
+
+      <div class="ajout-ligne ecran-seulement">
+        <button type="button" id="btn-ajouter-ligne" title="Ajouter une ligne à la fin du tableau">+ Ajouter une ligne</button>
+      </div>
+
+      <section class="pied" id="pied">
+        <div class="paiements" id="paiements"></div>
+        <p class="arrete">
+          <span id="arrete-phrase"></span><br>
+          <span id="arrete-chiffres"></span>
+        </p>
+        <div class="zone-signature" id="zone-signature" title="Cliquer pour signer">
+          <div class="cachet" id="cachet"></div>
+          <img id="image-signature" class="image-signature" alt="Signature" hidden>
+          <span id="aide-signature" class="aide-signature ecran-seulement">Cliquez sur « Signer » pour ajouter la signature</span>
+        </div>
+      </section>
+    </article>
+  </main>
+
+  <!-- Suggestions d'unités (saisie libre possible) -->
+  <datalist id="liste-unites"></datalist>
+
+  <!-- ===================== Fenêtres modales ===================== -->
+
+  <dialog id="modale-ouvrir" class="modale large" aria-labelledby="titre-ouvrir">
+    <div class="modale-entete">
+      <h2 id="titre-ouvrir">Ouvrir un document</h2>
+      <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
+    </div>
+    <input type="search" id="recherche-documents" class="recherche" placeholder="Rechercher (numéro, client, date…)" autocomplete="off">
+    <div class="liste-documents">
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Numéro</th><th>Client</th><th>Date</th><th class="nombre">Total</th><th></th></tr>
+        </thead>
+        <tbody id="liste-documents"></tbody>
+      </table>
+      <p id="aucun-document" class="vide-liste" hidden>Aucun document enregistré pour le moment.</p>
+    </div>
+    <div class="modale-pied">
+      <button type="button" data-fermer>Fermer</button>
+    </div>
+  </dialog>
+
+  <dialog id="modale-tva" class="modale" aria-labelledby="titre-tva">
+    <div class="modale-entete">
+      <h2 id="titre-tva">TVA</h2>
+      <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
+    </div>
+    <label class="case"><input type="checkbox" id="tva-active"> Appliquer la TVA</label>
+    <label class="champ-formulaire">Taux de TVA
+      <span class="avec-unite"><input type="text" id="tva-taux" inputmode="decimal" autocomplete="off"><span>%</span></span>
+    </label>
+    <p class="aide">Si la TVA n'est pas appliquée, seul le MONTANT TOTAL est imprimé.</p>
+    <div class="modale-pied"><button type="button" class="principal" data-fermer>OK</button></div>
+  </dialog>
+
+  <dialog id="modale-avance" class="modale" aria-labelledby="titre-avance">
+    <div class="modale-entete">
+      <h2 id="titre-avance">Avance</h2>
+      <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
+    </div>
+    <p class="aide">Total TTC du document : <strong id="avance-ttc"></strong> Ar</p>
+    <div class="choix-mode" role="radiogroup" aria-label="Saisie de l'avance">
+      <label class="case"><input type="radio" name="avance-mode" value="pourcent"> en %</label>
+      <label class="case"><input type="radio" name="avance-mode" value="montant"> en Ar</label>
+    </div>
+    <div class="deux-colonnes">
+      <label class="champ-formulaire">Pourcentage
+        <span class="avec-unite"><input type="text" id="avance-pourcent" inputmode="decimal" autocomplete="off"><span>%</span></span>
+      </label>
+      <label class="champ-formulaire">Montant
+        <span class="avec-unite"><input type="text" id="avance-montant" inputmode="numeric" autocomplete="off"><span>Ar</span></span>
+      </label>
+    </div>
+    <p class="aide">Les deux champs se mettent à jour l'un l'autre. L'avance est limitée au total TTC.
+      Avec une avance, les lignes « Avance » et « Reste à payer » sont ajoutées sous le total.</p>
+    <div class="modale-pied">
+      <button type="button" id="avance-aucune">Aucune avance</button>
+      <button type="button" class="principal" data-fermer>OK</button>
+    </div>
+  </dialog>
+
+  <dialog id="modale-paiement" class="modale" aria-labelledby="titre-paiement">
+    <div class="modale-entete">
+      <h2 id="titre-paiement">Mode de paiement</h2>
+      <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
+    </div>
+    <p class="aide">Seuls les modes cochés sont imprimés sur le document.</p>
+    <fieldset class="bloc-paiement">
+      <label class="case"><input type="checkbox" id="paiement-especes"> Espèces</label>
+    </fieldset>
+    <fieldset class="bloc-paiement">
+      <label class="case"><input type="checkbox" id="paiement-mm"> Mobile Money</label>
+      <div class="deux-colonnes">
+        <label class="champ-formulaire">Opérateur
+          <select id="paiement-mm-operateur"></select>
+        </label>
+        <label class="champ-formulaire">Numéro
+          <input type="text" id="paiement-mm-numero" inputmode="tel" autocomplete="off" placeholder="034 00 000 00">
+        </label>
+      </div>
+    </fieldset>
+    <fieldset class="bloc-paiement">
+      <label class="case"><input type="checkbox" id="paiement-virement"> Virement bancaire</label>
+      <div class="deux-colonnes etroit-large">
+        <label class="champ-formulaire">Banque
+          <input type="text" id="paiement-banque" autocomplete="off">
+        </label>
+        <label class="champ-formulaire">Numéro de compte
+          <input type="text" id="paiement-compte" autocomplete="off">
+        </label>
+      </div>
+    </fieldset>
+    <div class="modale-pied"><button type="button" class="principal" data-fermer>OK</button></div>
+  </dialog>
+
+  <dialog id="modale-signer" class="modale large" aria-labelledby="titre-signer">
+    <div class="modale-entete">
+      <h2 id="titre-signer">Signature</h2>
+      <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
+    </div>
+    <p class="aide">Signez dans le cadre avec la souris, le doigt ou le stylet, puis cliquez sur « Valider ».
+      La signature est mémorisée pour les documents suivants.</p>
+    <div class="outils-signature">
+      <button type="button" id="signature-effacer">Effacer</button>
+      <button type="button" id="signature-importer">Importer une image…</button>
+      <input type="file" id="signature-fichier" accept="image/png,image/jpeg,image/bmp,image/gif,image/webp" hidden>
+      <label class="case"><input type="checkbox" id="signature-fond-transparent" checked> Rendre le fond blanc transparent (import)</label>
+      <label class="champ-couleur">Encre
+        <select id="signature-couleur">
+          <option value="#1B2A8F">Bleue</option>
+          <option value="#111111">Noire</option>
+        </select>
+      </label>
+    </div>
+    <div class="cadre-signature">
+      <canvas id="canvas-signature" aria-label="Zone de signature"></canvas>
+      <span class="ligne-base" aria-hidden="true"></span>
+    </div>
+    <div class="options-signature">
+      <label class="case"><input type="checkbox" id="afficher-signature"> Afficher la signature</label>
+      <label class="case"><input type="checkbox" id="afficher-cachet"> Afficher le cachet</label>
+    </div>
+    <div class="modale-pied">
+      <button type="button" id="signature-supprimer" class="danger">Supprimer la signature enregistrée</button>
+      <span class="espace"></span>
+      <button type="button" data-fermer>Annuler</button>
+      <button type="button" id="signature-valider" class="principal">Valider</button>
+    </div>
+  </dialog>
+
+  <!-- Notifications -->
+  <div id="notification" class="notification" role="status" aria-live="polite" hidden>
+    <span class="texte"></span>
+    <button type="button" class="action" hidden></button>
+  </div>
+
+  <script src="js/emetteur.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/numberToWords.js"></script>
+  <script src="js/units.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/signature.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

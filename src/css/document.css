@@ -1,0 +1,407 @@
+/*
+ * document.css — rendu de la page A4.
+ * Le même rendu sert à l'écran, à l'impression et au PDF : seules les aides d'édition
+ * (contours, boutons, textes indicatifs) disparaissent à l'impression.
+ * Mesures relevées sur reference/facture-modele.jpg.
+ */
+
+:root {
+  --bleu: #0070C0;            /* bleu de l'en-tête, du destinataire et du numéro */
+  --bleu-cachet: #2A2EAE;     /* encre du cachet */
+  --trait: 0.75pt solid #000; /* bordures fines du tableau */
+  --fond-entete-tableau: #EDEDED;
+
+  --police-sans: Arial, "Liberation Sans", Helvetica, sans-serif;
+  --police-serif: "Bookman Old Style", "URW Bookman", "URW Bookman L", Bookman, Georgia,
+                  "Times New Roman", "Liberation Serif", serif;
+  --police-arrete: Calibri, Carlito, Arial, "Liberation Sans", sans-serif;
+
+  --marge-page: 12mm;         /* marges du PDF / de l'impression (@page) */
+  --retrait-lateral: 5mm;     /* retrait intérieur : le modèle est un peu plus étroit */
+  --retrait-haut: 12mm;       /* espace au-dessus de l'en-tête (1re page) */
+  --interligne-entete: 5.4mm; /* interligne de l'en-tête et du destinataire */
+  --largeur-col-num: 8%;      /* largeur de la colonne N° (sert aussi au retrait du paiement) */
+}
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+/* ------------------------------------------------------------------ Page */
+
+.page {
+  position: relative;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  padding: calc(var(--marge-page) + var(--retrait-haut))
+           calc(var(--marge-page) + var(--retrait-lateral))
+           var(--marge-page);
+  background: #fff;
+  color: #000;
+  font-family: var(--police-sans);
+  font-size: 9pt;
+  line-height: 1.25;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* -------------------------------------------- Champs éditables sans bordure */
+
+.champ {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-decoration: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+  resize: none;
+  overflow: hidden;
+}
+
+/* Les zones de texte s'agrandissent avec leur contenu */
+textarea.champ {
+  field-sizing: content;
+  min-height: 1lh;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* Champs sur une ligne dont la largeur suit le texte (ville, numéro) */
+input.champ.ville,
+input.champ.numero {
+  display: inline-block;
+  width: auto;
+  min-width: 2ch;
+  field-sizing: content;
+}
+
+/* Masque la flèche de la liste d'unités (reste accessible au clavier : flèche bas) */
+.champ::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------- En-tête */
+
+.entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.emetteur {
+  color: var(--bleu);
+  font-weight: bold;
+  font-size: 10pt;
+  line-height: var(--interligne-entete);
+  white-space: pre;
+}
+
+.emetteur .nom {
+  font-family: var(--police-serif);
+  font-size: 9.5pt;
+}
+
+.colonne-droite {
+  width: 44%;
+  display: flex;
+  flex-direction: column;
+}
+
+.ligne-date {
+  text-align: right;
+  font-weight: bold;
+  font-size: 10pt;
+  line-height: var(--interligne-entete);
+  white-space: nowrap;
+}
+
+.conteneur-date {
+  position: relative;
+  display: inline-block;
+}
+
+.date-texte {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Le vrai sélecteur de date est invisible : on l'ouvre en cliquant sur la date */
+.selecteur-date {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
+
+.destinataire {
+  margin-top: var(--interligne-entete);
+  text-align: center;
+  color: var(--bleu);
+  font-size: 8pt;
+  line-height: var(--interligne-entete);
+}
+
+/* ------------------------------------------------------- Numéro et objet */
+
+.ligne-numero {
+  margin-top: 7mm;
+  display: flex;
+  align-items: baseline;
+  color: var(--bleu);
+  font-size: 10pt;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.libelle-numero {
+  white-space: pre;
+}
+
+.ligne-objet {
+  margin-top: 12.5mm;
+  display: flex;
+  align-items: first baseline;
+  font-weight: bold;
+  font-size: 10pt;
+}
+
+.libelle-objet {
+  flex: none;
+  text-decoration: underline;
+}
+
+.objet {
+  flex: 1;
+  min-width: 0;
+}
+
+/* -------------------------------------------------------------- Tableau */
+
+.tableau {
+  width: 100%;
+  margin-top: 6.7mm;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10pt;
+}
+
+.col-num { width: var(--largeur-col-num); }
+.col-designation { width: 50%; }
+.col-unite { width: 7%; }
+.col-quantite { width: 9%; }
+.col-pu { width: 13%; }
+.col-montant { width: 13%; }
+
+.tableau th,
+.tableau td {
+  border: var(--trait);
+  padding: 0.1mm 1mm;
+  vertical-align: middle;
+}
+
+.tableau th {
+  height: 5.4mm;
+  padding: 0 0.3mm;
+  background: var(--fond-entete-tableau);
+  font-size: 8.5pt;
+  font-weight: bold;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tableau td {
+  line-height: 4.85mm;
+}
+
+/* En-tête répété sur chaque page, lignes jamais coupées en deux */
+.tableau thead { display: table-header-group; }
+.tableau tr { break-inside: avoid; page-break-inside: avoid; }
+/* La dernière ligne et les totaux restent ensemble */
+.bloc-fin { break-inside: avoid; page-break-inside: avoid; }
+
+.c-num { text-align: center; }
+.c-designation { text-align: left; }
+.c-unite { text-align: center; }
+.c-quantite { text-align: right; padding-right: 1.2mm !important; }
+.c-pu,
+.c-montant { text-align: right; padding-right: 3.5mm !important; }
+
+.c-num,
+.c-montant {
+  position: relative; /* ancre des boutons de ligne (écran) */
+}
+
+.montant {
+  white-space: nowrap;
+}
+
+/* Ligne vide puis totaux (comme le modèle, sans bordure dans la colonne N°) */
+.bloc-fin td.vide {
+  border: none;
+}
+
+.espace td,
+.total td {
+  height: 5.05mm;
+}
+
+.total .libelle {
+  text-align: right;
+  font-weight: bold;
+  font-size: 9.5pt;
+  padding-right: 0.8mm;
+  white-space: nowrap;
+}
+
+.total .valeur {
+  text-align: right;
+  padding-right: 3.5mm;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------- Paiement, arrêté, signature */
+
+.pied {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.paiements {
+  margin-top: 5mm;
+  padding-left: var(--largeur-col-num);
+  display: grid;
+  grid-template-columns: max-content max-content auto;
+  column-gap: 4mm;
+  row-gap: 1.2mm;
+  font-size: 10pt;
+  font-weight: bold;
+  font-style: italic;
+}
+
+.paiements:empty {
+  display: none;
+}
+
+.paiements .libelle {
+  text-decoration: underline;
+}
+
+.paiements .valeur {
+  white-space: pre-wrap;
+  word-spacing: 1.2mm;
+}
+
+.arrete {
+  margin: 9mm 0 0;
+  font-family: var(--police-arrete);
+  font-size: 11pt;
+  line-height: 5mm;
+}
+
+.zone-signature {
+  position: relative;
+  width: 54mm;
+  min-height: 30mm;
+  /* débord à droite limité au retrait latéral : le cachet reste dans la zone imprimable */
+  margin: 4mm calc(-1 * var(--retrait-lateral)) 0 auto;
+  cursor: pointer;
+}
+
+.cachet {
+  color: var(--bleu-cachet);
+  text-align: center;
+  font-weight: bold;
+  font-size: 9pt;
+  line-height: 4.6mm;
+  white-space: pre;
+}
+
+.cachet .nom {
+  font-family: var(--police-serif);
+  font-size: 11pt;
+}
+
+/* La signature se pose sur la partie droite du cachet, comme sur le modèle */
+.image-signature {
+  position: absolute;
+  right: 0;
+  top: -2mm;
+  height: 24mm;
+  max-width: 62%;
+  object-fit: contain;
+  object-position: right center;
+  pointer-events: none;
+}
+
+.image-signature[hidden],
+.cachet[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------- Impression */
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .page {
+    width: auto;
+    min-height: 0;
+    margin: 0 !important;
+    padding: var(--retrait-haut) var(--retrait-lateral) 0;
+    box-shadow: none !important;
+  }
+
+  .ecran-seulement {
+    display: none !important;
+  }
+
+  .champ,
+  .champ:hover,
+  .champ:focus {
+    outline: none !important;
+    background: transparent !important;
+  }
+
+  .champ::placeholder {
+    color: transparent !important;
+  }
+
+  .zone-signature {
+    cursor: auto;
+  }
+}
+
+/* Capture PNG de l'autotest : simule les marges de la feuille A4 */
+html.capture-png body {
+  box-sizing: border-box;
+  width: 210mm;
+  padding: var(--marge-page) !important;
+}
