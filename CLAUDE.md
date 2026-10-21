@@ -25,13 +25,16 @@ Le rendu doit reproduire fidèlement `reference/facture-modele.jpg`.
 - Les calculs sont **uniquement** dans `src/js/calc.js` (fonctions pures, testées).
   Tous les montants sont des entiers en Ariary ; quantités en centièmes entiers.
 - L'en-tête de l'émetteur est **constant** : le modifier uniquement dans `src/js/emetteur.js`.
+- **Saisie** : un champ en cours de frappe ne doit JAMAIS être retiré ou recréé dans le DOM
+  (sinon le curseur saute). L'autotest tape de vrais caractères (`selftest:taper`) pour le vérifier ;
+  tester toute nouvelle saisie de cette façon, pas en affectant `value`.
 
 ## Commandes
 
 | Commande            | Rôle                                                                 |
 |---------------------|----------------------------------------------------------------------|
 | `npm start`         | lance l'application                                                   |
-| `npm test`          | tests unitaires (`node --test`) de `calc.js` et `numberToWords.js`    |
+| `npm test`          | tests unitaires (`node --test`) de `calc.js`, `numberToWords.js`, `state.js` |
 | `npm run selftest`  | ouvre le document d'exemple, exporte `dist/selftest/apercu.pdf` + `.png`, vérifie l'interface puis quitte |
 | `npm run build`     | `electron-builder --win dir` → `dist/win-unpacked/DevisPro.exe`       |
 | `npm run icon`      | régénère `build/icon.ico`                                             |
@@ -58,13 +61,13 @@ src/
   js/units.js             liste des unités proposées
   js/signature.js         dessin de la signature (canvas) + import d'image
   js/storage.js           brouillon automatique, enregistrer / ouvrir / supprimer
-  js/app.js               événements, rendu, barre d'outils, autotest de l'interface
-tests/                    calc.test.js, numberToWords.test.js (node --test)
+  js/app.js               événements, rendu, barre d'outils, acomptes, historique, autotest
+tests/                    calc.test.js, numberToWords.test.js, state.test.js (node --test)
 scripts/                  make-icon.js (icône), zip.js (archive du build), outils.js (CRC-32)
 reference/facture-modele.jpg   modèle à reproduire
 docs/apercu.png           aperçu du rendu (copie de dist/selftest/apercu.png)
 build/icon.ico            icône générée par scripts/make-icon.js (+ icon.png, aperçu)
-.github/workflows/        build Windows + lancement de DevisPro.exe --selftest + zip
+.github/workflows/        build Windows + DevisPro.exe --selftest + zip (artefact et Release)
 .tools/                   Node portable éventuel (ignoré par git)
 dist/                     sorties (build, selftest) — ignoré par git
 ```

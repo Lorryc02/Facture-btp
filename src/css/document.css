@@ -258,6 +258,12 @@ input.champ.numero {
   white-space: nowrap;
 }
 
+/* Valeur trop longue pour sa case : marges réduites (police réduite par app.js si besoin) */
+.tableau td.serre {
+  padding-left: 0.4mm !important;
+  padding-right: 0.6mm !important;
+}
+
 /* Ligne vide puis totaux (comme le modèle, sans bordure dans la colonne N°) */
 .bloc-fin td.vide {
   border: none;
@@ -310,7 +316,7 @@ input.champ.numero {
 .echeancier {
   display: grid;
   grid-template-columns: max-content max-content minmax(0, 1fr) max-content max-content;
-  column-gap: 3mm;
+  column-gap: 0;
   row-gap: 0.8mm;
   margin-bottom: 1.5mm;
   padding-left: 3mm;
@@ -322,6 +328,15 @@ input.champ.numero {
 
 .echeancier .n-acompte {
   font-weight: bold;
+}
+
+/* Espacement porté par les cellules : une colonne « (déduit) » vide ne laisse pas de trou */
+.echeancier > :not(.n-acompte) {
+  padding-left: 3mm;
+}
+
+.echeancier > .etat-acompte:empty {
+  padding-left: 0;
 }
 
 .echeancier .pourcent-acompte,
@@ -441,8 +456,15 @@ input.champ.numero {
     background: transparent !important;
   }
 
+  /* Textes indicatifs ni visibles ni présents dans le texte du PDF ; pas de curseur imprimé */
   .champ::placeholder {
+    visibility: hidden !important;
     color: transparent !important;
+  }
+
+  .champ,
+  .champ:focus {
+    caret-color: transparent !important;
   }
 
   .zone-signature {

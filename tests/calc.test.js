@@ -45,6 +45,14 @@ test('lecture des saisies : virgule, point, espaces, entrées invalides', () => 
   assert.equal(Calc.lireEntier('1 000'), 1000);
   assert.equal(Calc.lireEntier('1.000.000'), 1000000);
   assert.equal(Calc.lireEntier('75 000 Ar'), 75000);
+  assert.equal(Calc.lireEntier('75 000 Ariary'), 75000);
+  // Montants écrits à la malgache : un seul séparateur suivi de 3 chiffres = milliers
+  assert.equal(Calc.lireEntier('150.000'), 150000);
+  assert.equal(Calc.lireEntier('45,000'), 45000);
+  assert.equal(Calc.lireEntier('300.000 Ar'), 300000);
+  assert.equal(Calc.lireEntier('1.50'), 2);
+  assert.equal(Calc.lireCentiemes('1.500'), 150, 'une quantité garde sa virgule décimale');
+  assert.equal(Calc.montantLigne('12', '45.000'), 540000);
   assert.equal(Calc.lireEntier('12,5'), 13);
   assert.equal(Calc.lireEntier('-12,5'), -13);
   assert.equal(Calc.lireCentiemes('20 %'), 2000);
@@ -149,10 +157,36 @@ test('acomptes déduits au-delà de 100 % : le reste ne devient jamais négatif'
   assert.equal(t.reste, 0);
 });
 
-test('devis : la phrase d’arrêté garde le total TTC, même avec des acomptes déduits', () => {
-  const t = Calc.calculerTotaux(modele('devis', echeancier(true)));
-  assert.equal(t.reste, 945600);
+test('devis : arrêté = TTC sans déduction (par défaut), sinon reste à payer', () => {
+  let t = Calc.calculerTotaux(modele('devis', echeancier()));
   assert.equal(t.arrete, 1182000);
+  t = Calc.calculerTotaux(modele('devis', echeancier(true)));
+  assert.equal(t.reste, 945600);
+  assert.equal(t.arrete, 945600);
+});
+
+test('arrondi cumulé : les acomptes en % font toujours exactement le TTC', () => {
+  for (let ttc = 1182000; ttc < 1183000; ttc++) {
+    for (const parts of [[50, 50], [20, 30, 50], [25, 25, 25, 25], [33.33, 33.33, 33.34], [10, 15, 75]]) {
+      const r = Calc.calculerAcomptes(ttc, parts.map((p) => ({ mode: 'pourcent', pourcent: p })));
+      assert.equal(r.totalMontants, ttc, `${ttc} ${parts}`);
+      assert.equal(r.totalPourcent, 100);
+    }
+  }
+  const r = Calc.calculerAcomptes(1182001, [{ pourcent: 50, deduit: true }, { pourcent: 50 }]);
+  assert.deepEqual(r.lignes.map((l) => l.montant), [591001, 591000]);
+});
+
+test('acompte plafonné : montant et pourcentage réellement déduits', () => {
+  const r = Calc.calculerAcomptes(1182000, [
+    { mode: 'pourcent', pourcent: 80, deduit: true },
+    { mode: 'pourcent', pourcent: 50, deduit: true }
+  ]);
+  assert.equal(r.lignes[1].montant, 591000);
+  assert.equal(r.lignes[1].montantDeduit, 236400);
+  assert.equal(r.lignes[1].pourcentDeduit, 20);
+  assert.equal(r.lignes[1].plafonne, true);
+  assert.equal(r.lignes[0].plafonne, false);
 });
 
 test('exemple utilisateur : 562 500 Ar sans TVA, acompte de 20 % déduit → 450 000 Ar', () => {

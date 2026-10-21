@@ -15,7 +15,7 @@
   <header class="barre-outils" role="toolbar" aria-label="Barre d'outils">
     <div class="groupe">
       <button type="button" id="btn-nouveau" title="Nouveau document (Ctrl+N)">Nouveau</button>
-      <button type="button" id="btn-ouvrir" title="Ouvrir un document enregistré (Ctrl+O)">Ouvrir</button>
+      <button type="button" id="btn-historique" title="Historique des factures et devis : ouvrir, facturer, suivre les paiements (Ctrl+O)">Historique</button>
       <button type="button" id="btn-enregistrer" title="Enregistrer le document (Ctrl+S)">Enregistrer</button>
     </div>
     <div class="groupe">
@@ -29,7 +29,7 @@
     <div class="groupe">
       <button type="button" id="btn-tva" title="Taux de TVA">TVA</button>
       <button type="button" id="btn-acomptes" title="Acomptes : échéancier de paiement et acomptes déduits">Acomptes</button>
-      <button type="button" id="btn-paiement" title="Modes de paiement">Paiement</button>
+      <button type="button" id="btn-paiement" title="Moyens de paiement (espèces, virement)">Paiement</button>
       <button type="button" id="btn-signer" title="Signature et cachet">Signer</button>
     </div>
     <div class="etat-document" id="etat-document" aria-live="polite"></div>
@@ -91,6 +91,9 @@
         <tbody id="bloc-fin" class="bloc-fin"></tbody>
       </table>
 
+      <!-- Alertes visibles à l'écran seulement (échéancier incomplet, reste négatif…) -->
+      <div class="alertes-ecran ecran-seulement" id="alertes-ecran" role="status" hidden></div>
+
       <div class="ajout-ligne ecran-seulement">
         <button type="button" id="btn-ajouter-ligne" title="Ajouter une ligne à la fin du tableau">+ Ajouter une ligne</button>
       </div>
@@ -98,16 +101,19 @@
       <section class="pied" id="pied">
         <!-- Modalités de paiement : échéancier d'acomptes + moyens de paiement -->
         <div class="modalites" id="modalites">
-          <div class="titre-modalites" id="titre-modalites">MODALITÉS DE PAIEMENT</div>
-          <div class="echeancier" id="echeancier" title="Cliquer pour modifier les acomptes"></div>
-          <div class="paiements" id="paiements" title="Cliquer pour modifier les moyens de paiement"></div>
-          <button type="button" class="aide-modalites ecran-seulement" id="aide-modalites">+ Ajouter des acomptes (ex. 20 % / 30 % / 50 %)</button>
+          <div class="titre-modalites" id="titre-modalites" title="Cliquez pour modifier les acomptes">MODALITÉS DE PAIEMENT</div>
+          <div class="echeancier" id="echeancier" title="Cliquez pour modifier les acomptes"></div>
+          <div class="paiements" id="paiements" title="Cliquez pour modifier les moyens de paiement"></div>
+          <div class="aides-modalites ecran-seulement">
+            <button type="button" class="aide-modalites" id="aide-modalites">+ Ajouter des acomptes (ex. 20 % / 30 % / 50 %)</button>
+            <button type="button" class="aide-modalites" id="aide-paiement">+ Ajouter un moyen de paiement</button>
+          </div>
         </div>
         <p class="arrete">
           <span id="arrete-phrase"></span><br>
           <span id="arrete-chiffres"></span>
         </p>
-        <div class="zone-signature" id="zone-signature" title="Cliquer pour signer">
+        <div class="zone-signature" id="zone-signature" title="Cliquez pour signer">
           <div class="cachet" id="cachet"></div>
           <img id="image-signature" class="image-signature" alt="Signature" hidden>
           <span id="aide-signature" class="aide-signature ecran-seulement">Cliquez sur « Signer » pour ajouter la signature</span>
@@ -121,22 +127,49 @@
 
   <!-- ===================== Fenêtres modales ===================== -->
 
-  <dialog id="modale-ouvrir" class="modale large" aria-labelledby="titre-ouvrir">
+  <dialog id="modale-historique" class="modale tres-large" aria-labelledby="titre-historique">
     <div class="modale-entete">
-      <h2 id="titre-ouvrir">Ouvrir un document</h2>
+      <h2 id="titre-historique">Historique des factures et devis</h2>
       <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
     </div>
-    <input type="search" id="recherche-documents" class="recherche" placeholder="Rechercher (numéro, client, date…)" autocomplete="off">
+    <div class="filtres-historique">
+      <input type="search" id="recherche-documents" class="recherche" placeholder="Rechercher : numéro, client, objet, montant…" autocomplete="off">
+      <select id="filtre-type" aria-label="Type de document">
+        <option value="">Factures et devis</option>
+        <option value="facture">Factures</option>
+        <option value="devis">Devis</option>
+      </select>
+      <select id="filtre-annee" aria-label="Année"></select>
+      <select id="filtre-statut" aria-label="Statut">
+        <option value="">Tous les statuts</option>
+        <option value="a-encaisser">Factures à encaisser</option>
+        <option value="payee">Factures payées</option>
+        <option value="devis-attente">Devis non facturés</option>
+        <option value="devis-facture">Devis facturés</option>
+      </select>
+    </div>
     <div class="liste-documents">
       <table>
         <thead>
-          <tr><th>Type</th><th>Numéro</th><th>Client</th><th>Date</th><th class="nombre">Total</th><th></th></tr>
+          <tr>
+            <th data-tri="type">Type</th>
+            <th data-tri="numero">Numéro</th>
+            <th data-tri="date">Date</th>
+            <th data-tri="client">Client et objet</th>
+            <th data-tri="total" class="nombre">Total TTC</th>
+            <th data-tri="arrete" class="nombre" title="Montant de la phrase « Arrêtée… » : total moins les acomptes déduits">Net à payer</th>
+            <th data-tri="statut">Statut</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody id="liste-documents"></tbody>
       </table>
       <p id="aucun-document" class="vide-liste" hidden>Aucun document enregistré pour le moment.</p>
     </div>
+    <div class="resume-historique" id="resume-historique"></div>
     <div class="modale-pied">
+      <button type="button" id="historique-csv">Exporter la liste (Excel)</button>
+      <span class="espace"></span>
       <button type="button" data-fermer>Fermer</button>
     </div>
   </dialog>
@@ -159,9 +192,9 @@
       <h2 id="titre-acomptes">Acomptes — échéancier de paiement</h2>
       <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
     </div>
-    <p class="aide">Total TTC du document : <strong id="acomptes-ttc"></strong> Ar.
-      Ajoutez autant d'acomptes que nécessaire. Le pourcentage et le montant se mettent à jour l'un
-      l'autre ; le libellé est libre. Les acomptes cochés « Déduit » sont retirés du total
+    <p class="aide">Total du document : <strong id="acomptes-ttc"></strong> Ar.
+      Ajoutez autant d'acomptes que nécessaire. Saisissez le pourcentage ou le montant, l'autre se
+      calcule ; le libellé est libre. Les acomptes cochés « Déduit » sont retirés du total
       (lignes « Acompte » puis « Reste à payer ») et, sur une facture, la phrase « Arrêtée… »
       reprend le reste à payer. Pour une première facture, seul le premier acompte est déduit.</p>
     <div class="liste-acomptes">

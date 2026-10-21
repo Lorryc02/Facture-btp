@@ -65,6 +65,10 @@
       return api.supprimerDocument(id);
     },
 
+    marquerPayee(id, payee) {
+      return api.marquerPayee(id, payee);
+    },
+
     async lireReglages() {
       try {
         return (await api.lireReglages()) || {};

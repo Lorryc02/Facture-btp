@@ -150,16 +150,24 @@ body {
 
 /* Bloc des modalités : cliquable à l'écran pour ouvrir les fenêtres Acomptes / Paiement */
 @media screen {
+  .titre-modalites,
   .echeancier,
   .paiements {
     cursor: pointer;
   }
 
+  .titre-modalites:hover,
   .echeancier:hover,
   .paiements:hover {
     outline: 1px dashed rgba(0, 112, 192, 0.45);
     outline-offset: 1mm;
   }
+}
+
+.aides-modalites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .aide-modalites {
@@ -174,6 +182,21 @@ body {
 }
 
 .aide-modalites[hidden] {
+  display: none;
+}
+
+/* Alertes à l'écran (jamais imprimées) */
+.alertes-ecran {
+  margin-top: 2mm;
+  padding: 6px 10px;
+  border: 1px solid #f5c26b;
+  border-radius: 4px;
+  background: #fff8e6;
+  color: #8a4b00;
+  font: 12px/1.45 var(--ui-police);
+}
+
+.alertes-ecran[hidden] {
   display: none;
 }
 
@@ -261,6 +284,116 @@ body {
 
 .modale.large {
   width: min(820px, calc(100vw - 40px));
+}
+
+.modale.tres-large {
+  width: calc(100vw - 40px);
+  max-width: 1240px;
+}
+
+.filtres-historique {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filtres-historique .recherche {
+  flex: 1 1 260px;
+  width: auto;
+}
+
+.filtres-historique select {
+  padding: 6px 8px;
+  border: 1px solid var(--ui-bordure);
+  border-radius: 4px;
+  background: #fff;
+  font: 13px var(--ui-police);
+}
+
+.liste-documents th[data-tri] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.liste-documents th[data-tri]:hover {
+  color: var(--ui-accent);
+}
+
+.liste-documents th.trie::after {
+  content: " " attr(data-sens);
+  font-size: 10px;
+}
+
+.liste-documents td small {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ui-gris);
+}
+
+.liste-documents td.numero small.origine {
+  color: #6b3fa0;
+}
+
+.liste-documents td.statut .case-payee {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.liste-documents .etat {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.liste-documents .etat.a-encaisser {
+  color: #b54708;
+}
+
+.liste-documents .etat.soldee,
+.liste-documents .etat.devis-facture {
+  color: #1e6b3a;
+}
+
+.liste-documents .etat.devis-attente {
+  color: var(--ui-gris);
+}
+
+.liste-documents td.actions {
+  white-space: normal;
+}
+
+.liste-documents .actions .boutons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px;
+  max-width: 190px;
+  margin-left: auto;
+}
+
+.liste-documents .actions .boutons button {
+  margin: 0;
+  padding: 2px 7px !important;
+  font-size: 12px !important;
+}
+
+.liste-documents .actions .supprimer {
+  min-width: 26px;
+}
+
+.modale.tres-large .liste-documents td.client {
+  max-width: 240px;
+}
+
+.resume-historique {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ui-gris);
 }
 
 .modale::backdrop {
@@ -450,9 +583,10 @@ body {
 }
 
 .liste-documents td.client {
-  max-width: 220px;
+  max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .liste-documents .nombre {

@@ -35,6 +35,8 @@
     titreModalites: $('#titre-modalites'),
     echeancier: $('#echeancier'),
     aideModalites: $('#aide-modalites'),
+    aidePaiement: $('#aide-paiement'),
+    alertes: $('#alertes-ecran'),
     arretePhrase: $('#arrete-phrase'),
     arreteChiffres: $('#arrete-chiffres'),
     zoneSignature: $('#zone-signature'),
@@ -192,9 +194,41 @@
     // La dernière ligne est placée avec les totaux pour ne jamais en être séparée
     el.blocFin.replaceChildren(derniere);
     rafraichirCalculs();
+    lignesDom().forEach(ajusterLigne);
   }
 
   const lignesDom = () => $$('tr.ligne', el.tableau);
+
+  /**
+   * Une valeur trop longue pour sa case (prix à 9 chiffres, quantité de 10 000, « Rouleau »…)
+   * n'est jamais coupée : marges réduites puis police réduite par paliers. La mesure faite à
+   * l'écran vaut pour l'impression (même largeur de tableau).
+   */
+  function ajusterLargeur(element) {
+    if (!element) return;
+    const td = element.closest('td');
+    const utile = () => {
+      const style = getComputedStyle(td);
+      return td.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    };
+    const deborde = () => (element.tagName === 'INPUT'
+      ? element.scrollWidth > element.clientWidth + 0.5
+      : element.getBoundingClientRect().width > utile() + 0.5);
+    if (!td.classList.contains('serre') && !element.style.fontSize && !deborde()) return;
+    td.classList.remove('serre');
+    element.style.fontSize = '';
+    if (!deborde()) return;
+    td.classList.add('serre');
+    for (const taille of [null, 9.5, 9, 8.5, 8, 7.5, 7, 6.5]) {
+      element.style.fontSize = taille ? taille + 'pt' : '';
+      if (!deborde()) return;
+    }
+  }
+
+  /** Ajuste les cellules à largeur fixe d'une ligne (unité, quantité, prix, montant). */
+  function ajusterLigne(tr) {
+    ['.unite', '.quantite', '.pu', '.montant'].forEach((selecteur) => ajusterLargeur($(selecteur, tr)));
+  }
 
   /** Réaffiche les quantités et prix au format (« 3,00 », « 75 000 »). */
   function reformaterChamps() {
@@ -203,6 +237,7 @@
       if (!l) return;
       $('.quantite', tr).value = formaterQuantiteOuVide(l.quantite);
       $('.pu', tr).value = formaterPrixOuVide(l.prixUnitaire);
+      ajusterLigne(tr);
     });
   }
 
@@ -237,6 +272,7 @@
           d.lignes.splice(Math.min(index, d.lignes.length), 0, retiree);
         }, 'structure');
         afficherLignes();
+        focaliserLigne(Math.min(index, magasin.doc.lignes.length - 1));
       }
     });
   }
@@ -279,7 +315,12 @@
       const l = doc.lignes[i];
       if (!l) return;
       const complet = l.quantite !== null && l.prixUnitaire !== null;
-      $('.montant', tr).textContent = complet ? Calc.formaterMontant(totaux.montants[i]) : '';
+      const montant = $('.montant', tr);
+      const texteMontant = complet ? Calc.formaterMontant(totaux.montants[i]) : '';
+      if (montant.textContent !== texteMontant) {
+        montant.textContent = texteMontant;
+        ajusterLargeur(montant);
+      }
     });
 
     rafraichirTotaux(totaux);
@@ -299,6 +340,7 @@
     el.arreteChiffres.textContent = '(Ar ' + Calc.formaterMontant(totaux.arrete) + ')';
 
     rafraichirModalites(totaux);
+    rafraichirAlertes(totaux);
     rafraichirSignature();
     rafraichirBarreOutils(totaux);
   }
@@ -335,10 +377,10 @@
     }
     // Acomptes déduits (autant qu'il y en a), puis le reste à payer
     t.acomptes.forEach((a, i) => {
-      if (!a.deduit) return;
-      total('acompte-' + (i + 1), 'Acompte n°' + (i + 1) + ' (' + Calc.formaterPourcent(a.pourcent) + ' %)', a.montantDeduit, 'acompte');
+      if (!a.deduit || a.montantDeduit <= 0) return;
+      total('acompte-' + (i + 1), libelleAcompteDeduit(i, magasin.doc.acomptes[i], a), a.montantDeduit, 'acompte');
     });
-    if (t.totalAcomptes > 0) total('reste', 'Reste à payer', t.reste);
+    if (t.totalAcomptes > 0) total('reste', 'RESTE À PAYER', t.reste);
 
     if (derniere) {
       while (derniere.nextSibling) derniere.nextSibling.remove();
@@ -346,6 +388,17 @@
     } else {
       el.blocFin.replaceChildren(...lignes);
     }
+  }
+
+  /**
+   * Libellé d'un acompte déduit dans les totaux : « ACOMPTE N°1 DÉDUIT (20 %) ».
+   * Acompte saisi en Ar : pas de pourcentage ; acompte plafonné : pourcentage réellement déduit.
+   */
+  function libelleAcompteDeduit(i, acompte, calcul) {
+    const debut = 'ACOMPTE N°' + (i + 1) + ' DÉDUIT';
+    if (acompte && acompte.mode === 'montant' && !calcul.plafonne) return debut;
+    const pourcent = calcul.plafonne ? calcul.pourcentDeduit : calcul.pourcent;
+    return debut + ' (' + Calc.formaterPourcent(pourcent) + '\u00A0%)';
   }
 
   /**
@@ -358,12 +411,14 @@
     const echeancier = [];
     doc.acomptes.forEach((a, i) => {
       const calcul = t.acomptes[i];
+      const etat = !calcul.deduit || calcul.montantDeduit <= 0 ? ''
+        : (calcul.plafonne ? '(déduit\u00A0: ' + montantAr(calcul.montantDeduit) + ')' : '(déduit)');
       echeancier.push(
         creer('span', 'n-acompte', 'Acompte n°' + (i + 1)),
-        creer('span', 'pourcent-acompte', Calc.formaterPourcent(calcul.pourcent) + ' %'),
+        creer('span', 'pourcent-acompte', (a.mode === 'montant' ? '≈\u00A0' : '') + Calc.formaterPourcent(calcul.pourcent) + '\u00A0%'),
         creer('span', 'libelle-acompte', a.libelle.trim()),
-        creer('span', 'montant-acompte', Calc.formaterMontant(calcul.montant) + ' Ar'),
-        creer('span', 'etat-acompte', calcul.deduit ? '(déduit)' : '')
+        creer('span', 'montant-acompte', montantAr(calcul.montant)),
+        creer('span', 'etat-acompte', etat)
       );
     });
     el.echeancier.replaceChildren(...echeancier);
@@ -373,7 +428,7 @@
     const ajouter = (libelle, valeur) => {
       lignes.push(creer('span', 'libelle', libelle), creer('span', 'deux-points', ':'), creer('span', 'valeur', valeur));
     };
-    if (p.especes) ajouter('PAIEMENT', 'EN ESPECES');
+    if (p.especes) ajouter('PAIEMENT', 'EN ESPÈCES');
     if (p.virement.actif) {
       ajouter('NUMERO DU COMPTE BANCAIRE', [p.virement.banque.trim(), p.virement.compte.trim()].filter(Boolean).join('  '));
     }
@@ -381,6 +436,28 @@
 
     el.titreModalites.hidden = !echeancier.length && !lignes.length;
     el.aideModalites.hidden = echeancier.length > 0;
+    el.aidePaiement.hidden = lignes.length > 0;
+  }
+
+  /**
+   * Alertes affichées à l'écran seulement (jamais imprimées) : échéancier qui ne tombe pas
+   * juste, acompte plafonné, montant arrêté nul ou négatif.
+   */
+  function rafraichirAlertes(t) {
+    const alertes = [];
+    if (t.acomptes.length && t.ttc > 0 && t.montantEcheancier !== t.ttc) {
+      alertes.push('L’échéancier fait ' + Calc.formaterPourcent(t.pourcentEcheancier) + '\u00A0% ('
+        + montantAr(t.montantEcheancier) + ') au lieu de 100\u00A0% (' + montantAr(t.ttc) + ').');
+    }
+    t.acomptes.forEach((a, i) => {
+      if (a.plafonne) {
+        alertes.push('Les acomptes déduits dépassent le total : l’acompte n°' + (i + 1) + ' est plafonné à ' + montantAr(a.montantDeduit) + '.');
+      }
+    });
+    if (t.arrete < 0) alertes.push('Le montant arrêté est négatif (' + montantAr(t.arrete) + ') : vérifiez les remises.');
+    else if (t.arrete === 0 && t.totalAcomptes > 0) alertes.push('Tous les acomptes sont déduits : le document est arrêté à ZERO ARIARY.');
+    el.alertes.replaceChildren(...alertes.map((texteAlerte) => creer('div', '', '⚠ ' + texteAlerte)));
+    el.alertes.hidden = !alertes.length;
   }
 
   /** Cachet et image de signature selon les cases « Afficher ». */
@@ -404,10 +481,13 @@
     const t = totaux || Calc.calculerTotaux(doc);
     $$('.bascule-type button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === doc.type)));
     indicateur($('#btn-tva'), t.tvaActive ? Calc.formaterPourcent(t.taux) + ' %' : 'non');
-    const deduits = t.acomptes.filter((a) => a.deduit).length;
-    indicateur($('#btn-acomptes'), t.acomptes.length ? deduits + '/' + t.acomptes.length : '');
+    const deduits = t.acomptes.filter((a) => a.deduit && a.montantDeduit > 0).length;
+    indicateur($('#btn-acomptes'), t.acomptes.length
+      ? (deduits ? '−' + Calc.formaterPourcent(t.ttc > 0 ? Math.round(t.totalAcomptes * 10000 / t.ttc) / 100 : 0) + '\u00A0%' : String(t.acomptes.length))
+      : '');
     $('#btn-acomptes').title = t.acomptes.length
-      ? t.acomptes.length + ' acompte(s) dans l’échéancier, dont ' + deduits + ' déduit(s)'
+      ? pluriel(t.acomptes.length, 'acompte', 'acomptes') + ' dans l’échéancier, dont ' + pluriel(deduits, 'déduit', 'déduits')
+        + (deduits ? ' (' + montantAr(t.totalAcomptes) + ')' : '')
       : 'Acomptes : échéancier de paiement et acomptes déduits';
 
     const modifie = magasin.estModifie();
@@ -461,6 +541,7 @@
           else if (cle === 'prixUnitaire') l.prixUnitaire = texte.trim() ? Calc.lireEntier(texte) : null;
           else l[cle] = texte;
         }, 'ligne');
+        if (cle !== 'designation') ajusterLargeur(cible);
         return;
       }
       const champ = cible.dataset.champ;
@@ -477,6 +558,7 @@
       cible.value = cible.dataset.cle === 'quantite'
         ? formaterQuantiteOuVide(l.quantite)
         : formaterPrixOuVide(l.prixUnitaire);
+      ajusterLargeur(cible);
     });
 
     // Entrée dans la quantité / le prix de la dernière ligne : nouvelle ligne
@@ -554,10 +636,15 @@
     const memeType = documents
       .filter((d) => d.type === type && String(d.numero || '').trim())
       .sort((a, b) => String(b.creeLe || '').localeCompare(String(a.creeLe || '')));
-    if (memeType.length) return Calc.incrementerNumero(memeType[0].numero);
     const actuel = magasin.doc;
-    if (actuel.type === type && actuel.numero.trim()) return Calc.incrementerNumero(actuel.numero);
-    return Etat.numeroParDefaut(type);
+    let numero;
+    if (memeType.length) numero = Calc.incrementerNumero(memeType[0].numero);
+    else if (actuel.type === type && actuel.numero.trim()) numero = Calc.incrementerNumero(actuel.numero);
+    else numero = Etat.numeroParDefaut(type);
+    // Un numéro déjà pris (par une facture ou un devis) n'est jamais réutilisé
+    const pris = new Set(documents.map((d) => String(d.numero || '').trim().toLowerCase()));
+    for (let essai = 0; essai < 1000 && pris.has(numero.trim().toLowerCase()); essai++) numero = Calc.incrementerNumero(numero);
+    return numero;
   }
 
   async function actionNouveau() {
@@ -569,25 +656,34 @@
     doc.type = actuel.type;
     doc.ville = actuel.ville || doc.ville;
     doc.tva = Etat.cloner(actuel.tva);
-    doc.acomptes = Etat.echeancierPourNouveau(Etat.cloner(actuel.acomptes), doc.type);
+    doc.acomptes = Etat.echeancierPourNouveau(Etat.cloner(actuel.acomptes), doc.type, Calc.calculerTotaux(actuel));
     doc.paiement = Etat.cloner(actuel.paiement);
     doc.afficherCachet = actuel.afficherCachet;
     doc.afficherSignature = actuel.afficherSignature;
     doc.numero = await prochainNumero(doc.type);
     magasin.remplacer(doc, true);
-    notifier('Nouveau ' + (doc.type === 'devis' ? 'devis' : 'document') + ' n° ' + doc.numero);
+    notifier((doc.type === 'devis' ? 'Nouveau devis n° ' : 'Nouvelle facture n° ') + doc.numero);
     el.destinataire.focus();
   }
 
-  async function actionEnregistrer() {
+  let enregistrementEnCours = null;
+
+  /** Enregistre le document (un double-clic ou Ctrl+S répété ne crée jamais deux fichiers). */
+  function actionEnregistrer() {
+    if (!enregistrementEnCours) {
+      enregistrementEnCours = enregistrer().finally(() => { enregistrementEnCours = null; });
+    }
+    return enregistrementEnCours;
+  }
+
+  async function enregistrer() {
     try {
-      const enregistre = await Stockage.enregistrer(magasin.doc);
-      magasin.modifier((doc) => {
-        doc.id = enregistre.id;
-        doc.creeLe = enregistre.creeLe;
-        doc.modifieLe = enregistre.modifieLe;
-      }, 'identifiant');
-      magasin.marquerEnregistre();
+      const envoye = Etat.cloner(magasin.doc);
+      const enregistre = await Stockage.enregistrer(envoye);
+      const identite = { id: enregistre.id, creeLe: enregistre.creeLe, modifieLe: enregistre.modifieLe };
+      Object.assign(envoye, identite);
+      magasin.modifier((doc) => Object.assign(doc, identite), 'identifiant');
+      magasin.marquerEnregistre(envoye);
       await Stockage.ecrireBrouillon(magasin, true);
       const d = magasin.doc;
       reglages = await Stockage.ecrireReglages({
@@ -597,7 +693,7 @@
         afficherCachet: d.afficherCachet,
         afficherSignature: d.afficherSignature
       });
-      notifier(libelleType(d.type) + ' ' + d.numero + ' enregistré' + (d.type === 'facture' ? 'e' : '') + '.', 'succes');
+      notifier((d.type === 'devis' ? 'Devis ' : 'Facture ') + d.numero + (d.type === 'devis' ? ' enregistré.' : ' enregistrée.'), 'succes');
       return true;
     } catch (erreur) {
       notifier('Enregistrement impossible : ' + erreur.message, 'erreur');
@@ -628,30 +724,53 @@
     reformaterChamps();
     try {
       const r = await api.imprimer();
-      if (!r.succes && r.raison && r.raison !== 'cancelled') notifier('Impression impossible : ' + r.raison, 'erreur');
+      if (!r.succes && r.raison && !/cancel/i.test(r.raison)) {
+        const raison = /printer/i.test(r.raison)
+          ? 'aucune imprimante n’est installée ou accessible'
+          : 'l’impression a échoué (' + r.raison + ')';
+        notifier('Impression impossible : ' + raison + '. Utilisez « Exporter PDF ».', 'erreur');
+      }
     } catch (erreur) {
       notifier('Impression impossible : ' + erreur.message, 'erreur');
     }
   }
 
+  // Mémoire de la dernière bascule Devis / Facture (remise à zéro à chaque changement de document)
+  let bascule = { numeros: {}, deductionAuto: false };
+
   /**
-   * Bascule Devis / Facture. Un devis devenu facture sans acompte déduit
-   * déduit son premier acompte (première facture), modifiable dans « Acomptes ».
+   * Bascule Devis / Facture.
+   *  - Le document prend le numéro suivant de la bonne série (devis ↔ facture) : jamais de
+   *    devis numéroté « FACPRO » ni de doublon ; revenir au type précédent lui rend son numéro.
+   *  - Devis devenu facture sans acompte déduit : le premier acompte est déduit (première facture) ;
+   *    revenir aussitôt en devis annule cette déduction automatique.
    */
-  function changerType(type) {
+  async function changerType(type) {
     const doc = magasin.doc;
     if (doc.type === type) return;
+    const ancienType = doc.type;
+    bascule.numeros[ancienType] = doc.numero;
+    const numero = bascule.numeros[type] || await prochainNumero(type);
     const deduirePremier = type === 'facture' && doc.acomptes.length > 0 && !doc.acomptes.some((a) => a.deduit);
+    const annulerDeduction = type === 'devis' && bascule.deductionAuto && doc.acomptes.length > 0
+      && doc.acomptes[0].deduit && doc.acomptes.slice(1).every((a) => !a.deduit);
     magasin.modifier((d) => {
       d.type = type;
+      if (numero) d.numero = numero;
       if (deduirePremier) d.acomptes[0].deduit = true;
+      if (annulerDeduction) d.acomptes[0].deduit = false;
     }, 'type');
-    if (deduirePremier) notifier('Première facture : l’acompte n°1 est déduit. Modifiable dans « Acomptes ».');
+    bascule.deductionAuto = deduirePremier;
+    if (numero) el.numero.value = numero;
+    const messages = [];
+    if (numero) messages.push('Numéro : ' + numero + '.');
+    if (deduirePremier) messages.push('Première facture : l’acompte n°1 est déduit (modifiable dans « Acomptes »).');
+    if (messages.length) notifier((type === 'devis' ? 'Devis. ' : 'Facture. ') + messages.join(' '));
   }
 
   function brancherBarreOutils() {
     $('#btn-nouveau').addEventListener('click', actionNouveau);
-    $('#btn-ouvrir').addEventListener('click', ouvrirListe);
+    $('#btn-historique').addEventListener('click', ouvrirHistorique);
     $('#btn-enregistrer').addEventListener('click', actionEnregistrer);
     $('#btn-pdf').addEventListener('click', actionPdf);
     $('#btn-imprimer').addEventListener('click', actionImprimer);
@@ -665,7 +784,7 @@
     document.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       const touche = e.key.toLowerCase();
-      const actions = { s: actionEnregistrer, n: actionNouveau, o: ouvrirListe, p: actionImprimer, e: actionPdf };
+      const actions = { s: actionEnregistrer, n: actionNouveau, o: ouvrirHistorique, h: ouvrirHistorique, p: actionImprimer, e: actionPdf };
       if (!actions[touche]) return;
       e.preventDefault();
       if ($('dialog[open]') && touche !== 's') return;
@@ -678,129 +797,406 @@
         if (e.target.closest('[data-fermer]')) d.close();
       });
     });
+
+    // TVA, Paiement, Acomptes : Entrée dans un champ = OK
+    $$('#modale-tva, #modale-paiement, #modale-acomptes').forEach((d) => {
+      d.addEventListener('keydown', (e) => {
+        const c = e.target;
+        if (e.key !== 'Enter' || e.isComposing || c.tagName !== 'INPUT' || c.type === 'checkbox') return;
+        e.preventDefault();
+        c.dispatchEvent(new Event('change', { bubbles: true }));
+        d.close();
+      });
+    });
+
+    // Champs numériques des fenêtres : contenu sélectionné à l'arrivée (taper « 30 » remplace « 20 »)
+    let aSelectionner = null;
+    document.addEventListener('focusin', (e) => {
+      const c = e.target;
+      if (c.matches && c.matches('dialog input[inputmode="decimal"], dialog input[inputmode="numeric"]')) {
+        c.select();
+        aSelectionner = c;
+      }
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (aSelectionner && e.target === aSelectionner) e.preventDefault();
+      aSelectionner = null;
+    });
   }
 
   // ===========================================================================
-  // Modale « Ouvrir »
+  // Historique des factures et devis : recherche, filtres, tri, totaux, statut
+  // « payée », facturer un devis, facture suivante, export Excel
   // ===========================================================================
 
   let documentsListes = [];
+  const triHistorique = { cle: 'date', sens: -1 };
+  const LIBELLES_STATUT = {
+    payee: 'Payée',
+    'a-encaisser': 'À encaisser',
+    soldee: 'Soldée',
+    'devis-facture': 'Facturé',
+    'devis-attente': 'En attente'
+  };
 
-  async function ouvrirListe() {
+  const pluriel = (n, un, plusieurs) => n + ' ' + (n > 1 ? plusieurs : un);
+  const montantAr = (n) => Calc.formaterMontant(n) + '\u00A0Ar';
+
+  /** Devis dont une facture a été tirée (« Facturer ») → numéro de cette facture. */
+  function devisFactures() {
+    const factures = new Map();
+    documentsListes.forEach((d) => {
+      if (d.type === 'facture' && d.origine && d.origine.type === 'devis') factures.set(d.origine.id, d.numero);
+    });
+    return factures;
+  }
+
+  /** Statut d'un document de l'historique (clé de LIBELLES_STATUT). */
+  function statutDocument(d, factures) {
+    if (d.type === 'facture') {
+      if (d.payee) return 'payee';
+      return d.arrete > 0 ? 'a-encaisser' : 'soldee';
+    }
+    return factures.has(d.id) ? 'devis-facture' : 'devis-attente';
+  }
+
+  async function ouvrirHistorique() {
     try {
       documentsListes = await Stockage.lister();
     } catch (erreur) {
-      notifier('Liste des documents illisible : ' + erreur.message, 'erreur');
+      notifier('Historique illisible : ' + erreur.message, 'erreur');
       return;
     }
     $('#recherche-documents').value = '';
-    remplirListe();
-    $('#modale-ouvrir').showModal();
+    remplirAnnees();
+    remplirHistorique();
+    $('#modale-historique').showModal();
     $('#recherche-documents').focus();
   }
 
-  function remplirListe() {
-    const filtre = $('#recherche-documents').value.trim().toLowerCase();
-    const corps = $('#liste-documents');
-    const visibles = documentsListes.filter((d) => {
-      if (!filtre) return true;
-      return [d.numero, d.client, d.dateTexte, libelleType(d.type), Calc.formaterMontant(d.total)]
-        .join(' ').toLowerCase().replace(/ /g, ' ').includes(filtre);
+  function remplirAnnees() {
+    const select = $('#filtre-annee');
+    const choisie = select.value;
+    const annees = [...new Set(documentsListes.map((d) => String(d.date || '').slice(0, 4)))]
+      .filter((a) => /^\d{4}$/.test(a)).sort().reverse();
+    const option = (valeur, texte) => {
+      const o = creer('option', '', texte);
+      o.value = valeur;
+      return o;
+    };
+    select.replaceChildren(option('', 'Toutes les années'), ...annees.map((a) => option(a, a)));
+    select.value = annees.includes(choisie) ? choisie : '';
+  }
+
+  /** Documents qui passent la recherche et les filtres. */
+  function documentsFiltres(factures) {
+    const recherche = $('#recherche-documents').value.trim().toLowerCase().replace(/\s+/g, ' ');
+    const type = $('#filtre-type').value;
+    const annee = $('#filtre-annee').value;
+    const statut = $('#filtre-statut').value;
+    return documentsListes.filter((d) => {
+      if (type && d.type !== type) return false;
+      if (annee && !String(d.date || '').startsWith(annee)) return false;
+      if (statut && statutDocument(d, factures) !== statut) return false;
+      if (!recherche) return true;
+      const montants = [d.total, d.arrete].map((m) => Calc.formaterMontant(m).replace(/\u00A0/g, ' ') + ' ' + m);
+      return [libelleType(d.type), d.numero, d.client, d.objet, d.dateTexte, ...montants]
+        .join(' ').toLowerCase().includes(recherche);
     });
-    corps.replaceChildren(...visibles.map((d) => {
-      const tr = creer('tr');
-      tr.dataset.id = d.id;
-      if (d.id === magasin.doc.id) tr.classList.add('courant');
-      const tdType = creer('td');
-      tdType.append(creer('span', 'badge ' + d.type, libelleType(d.type)));
-      const tdActions = creer('td', 'actions');
-      [['ouvrir', 'Ouvrir', 'principal'], ['dupliquer', 'Dupliquer', ''], ['supprimer', 'Supprimer', 'danger']]
-        .forEach(([action, texte, classe]) => {
-          const b = creer('button', classe, texte);
-          b.type = 'button';
-          b.dataset.action = action;
-          tdActions.append(b);
-        });
-      const tdClient = creer('td', 'client', d.client || '—');
-      tdClient.title = d.client || '';
-      tr.append(tdType, creer('td', '', d.numero || '—'), tdClient, creer('td', '', d.dateTexte || ''),
-        creer('td', 'nombre', Calc.formaterMontant(d.total) + ' Ar'), tdActions);
-      return tr;
-    }));
-    $('#aucun-document').hidden = documentsListes.length > 0;
-    $('#aucun-document').textContent = documentsListes.length
-      ? 'Aucun document ne correspond à la recherche.'
-      : 'Aucun document enregistré pour le moment.';
-    if (documentsListes.length && !visibles.length) $('#aucun-document').hidden = false;
+  }
+
+  function trierHistorique(liste, factures) {
+    const { cle, sens } = triHistorique;
+    const valeur = (d) => {
+      if (cle === 'total' || cle === 'arrete') return d[cle];
+      if (cle === 'statut') return LIBELLES_STATUT[statutDocument(d, factures)];
+      if (cle === 'date') return (d.date || '') + ' ' + (d.creeLe || '');
+      if (cle === 'type') return libelleType(d.type);
+      return String(d[cle] || '').toLowerCase();
+    };
+    return liste.slice().sort((a, b) => {
+      const va = valeur(a);
+      const vb = valeur(b);
+      const ordre = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'fr', { numeric: true });
+      return ordre * sens;
+    });
+  }
+
+  /** Une ligne du tableau de l'historique. */
+  function ligneHistorique(d, factures) {
+    const tr = creer('tr');
+    tr.dataset.id = d.id;
+    if (d.id === magasin.doc.id) tr.classList.add('courant');
+
+    const tdType = creer('td');
+    tdType.append(creer('span', 'badge ' + d.type, libelleType(d.type)));
+
+    const tdNumero = creer('td', 'numero');
+    tdNumero.append(creer('strong', '', d.numero || '—'));
+    if (d.origine) {
+      tdNumero.append(creer('small', 'origine',
+        (d.origine.type === 'devis' ? 'du devis ' : 'suite de la facture ') + d.origine.numero));
+    }
+
+    const tdClient = creer('td', 'client');
+    tdClient.append(creer('strong', '', d.client || '—'));
+    if (d.objet) tdClient.append(creer('small', '', d.objet));
+    tdClient.title = [d.client, d.objet].filter(Boolean).join('\n');
+
+    const statut = statutDocument(d, factures);
+    const tdStatut = creer('td', 'statut');
+    if (d.type === 'facture') {
+      const label = creer('label', 'case-payee');
+      const coche = creer('input', 'payee');
+      coche.type = 'checkbox';
+      coche.checked = d.payee;
+      label.append(coche, document.createTextNode(' Payée'));
+      label.title = d.payee && d.payeeLe
+        ? 'Payée le ' + Calc.formaterDateLongue(d.payeeLe)
+        : 'Cochez quand le client a réglé cette facture';
+      tdStatut.append(label);
+      if (!d.payee) tdStatut.append(creer('small', 'etat ' + statut, LIBELLES_STATUT[statut]));
+    } else {
+      tdStatut.append(creer('span', 'etat ' + statut,
+        statut === 'devis-facture' ? 'Facturé (n° ' + factures.get(d.id) + ')' : 'En attente'));
+    }
+
+    const tdActions = creer('td', 'actions');
+    const boutons = creer('div', 'boutons');
+    tdActions.append(boutons);
+    const bouton = (action, texte, classe, titre) => {
+      const b = creer('button', classe || '', texte);
+      b.type = 'button';
+      b.dataset.action = action;
+      if (titre) b.title = titre;
+      boutons.append(b);
+    };
+    bouton('ouvrir', 'Ouvrir', 'principal');
+    if (d.type === 'devis') bouton('facturer', 'Facturer', '', 'Créer la facture de ce devis (même contenu, premier acompte déduit)');
+    if (d.type === 'facture' && d.acomptesRestants > 0) {
+      bouton('suivante', 'Facture suivante', '', 'Facture suivante du même chantier : l’acompte suivant est déduit en plus');
+    }
+    bouton('dupliquer', 'Dupliquer', '', 'Copie avec un nouveau numéro et la date du jour');
+    bouton('supprimer', '×', 'danger supprimer', 'Supprimer définitivement');
+
+    const tdDate = creer('td', 'date', /^\d{4}-\d{2}-\d{2}$/.test(d.date || '') ? d.date.split('-').reverse().join('/') : '');
+    tdDate.title = d.dateTexte || '';
+    tr.append(tdType, tdNumero, tdDate, tdClient,
+      creer('td', 'nombre', montantAr(d.total)), creer('td', 'nombre', montantAr(d.arrete)), tdStatut, tdActions);
+    return tr;
+  }
+
+  function remplirHistorique() {
+    const factures = devisFactures();
+    const visibles = trierHistorique(documentsFiltres(factures), factures);
+    $('#liste-documents').replaceChildren(...visibles.map((d) => ligneHistorique(d, factures)));
+
+    $$('#modale-historique th[data-tri]').forEach((th) => {
+      const actif = th.dataset.tri === triHistorique.cle;
+      th.classList.toggle('trie', actif);
+      th.dataset.sens = actif ? (triHistorique.sens > 0 ? '▲' : '▼') : '';
+      th.setAttribute('aria-sort', actif ? (triHistorique.sens > 0 ? 'ascending' : 'descending') : 'none');
+    });
+
+    const vide = $('#aucun-document');
+    vide.hidden = visibles.length > 0;
+    vide.textContent = documentsListes.length
+      ? 'Aucun document ne correspond à la recherche ou aux filtres.'
+      : 'Aucun document enregistré pour le moment. Enregistrez une facture ou un devis (Ctrl+S) pour le retrouver ici.';
+
+    // Résumé des documents affichés
+    const lesFactures = visibles.filter((d) => d.type === 'facture');
+    const lesDevis = visibles.filter((d) => d.type === 'devis');
+    const somme = (liste) => liste.reduce((total, d) => total + d.arrete, 0);
+    const payees = lesFactures.filter((d) => d.payee);
+    const aEncaisser = lesFactures.filter((d) => !d.payee);
+    const resume = [pluriel(visibles.length, 'document affiché', 'documents affichés')];
+    if (lesFactures.length) {
+      resume.push(pluriel(lesFactures.length, 'facture', 'factures') + ' : ' + montantAr(somme(lesFactures))
+        + ' net à payer, dont ' + montantAr(somme(payees)) + ' payés et ' + montantAr(somme(aEncaisser)) + ' à encaisser');
+    }
+    if (lesDevis.length) {
+      const enAttente = lesDevis.filter((d) => !factures.has(d.id));
+      resume.push(pluriel(lesDevis.length, 'devis', 'devis') + ' : ' + montantAr(lesDevis.reduce((t, d) => t + d.total, 0))
+        + ' TTC, ' + (enAttente.length ? 'dont ' + pluriel(enAttente.length, 'non facturé', 'non facturés') : 'tous facturés'));
+    }
+    $('#resume-historique').textContent = resume.join(' · ');
+    return visibles;
   }
 
   async function ouvrirDocument(id) {
-    if (!(await confirmerAbandon())) return;
-    const doc = await Stockage.lire(id);
-    if (!doc) {
-      notifier('Ce document est introuvable.', 'erreur');
-      return;
+    try {
+      if (!(await confirmerAbandon())) return;
+      const doc = await Stockage.lire(id);
+      if (!doc) {
+        notifier('Ce document est introuvable.', 'erreur');
+        return;
+      }
+      magasin.remplacer(doc, true);
+      $('#modale-historique').close();
+      notifier((doc.type === 'devis' ? 'Devis ' : 'Facture ') + doc.numero + (doc.type === 'devis' ? ' ouvert.' : ' ouverte.'));
+    } catch (erreur) {
+      notifier('Ouverture impossible : ' + erreur.message, 'erreur');
     }
-    magasin.remplacer(doc, true);
-    $('#modale-ouvrir').close();
-    notifier(libelleType(doc.type) + ' ' + doc.numero + ' ouvert' + (doc.type === 'facture' ? 'e' : '') + '.');
   }
 
-  async function dupliquerDocument(id) {
-    if (!(await confirmerAbandon())) return;
-    const doc = await Stockage.lire(id);
-    if (!doc) return;
-    doc.id = null;
-    doc.creeLe = null;
-    doc.modifieLe = null;
-    doc.date = Calc.dateIso(new Date());
-    doc.numero = await prochainNumero(doc.type);
-    magasin.remplacer(doc, false);
-    $('#modale-ouvrir').close();
-    notifier('Copie créée (n° ' + doc.numero + '). Pensez à l’enregistrer.');
+  /**
+   * Nouveau document à partir d'un document de l'historique :
+   *  - « dupliquer » : copie avec le numéro suivant et la date du jour ;
+   *  - « facturer » : la facture d'un devis (même contenu, premier acompte déduit) ;
+   *  - « suivante » : facture suivante du même chantier (l'acompte suivant est déduit en plus).
+   */
+  async function creerDepuis(id, mode) {
+    try {
+      if (!(await confirmerAbandon())) return;
+      const source = await Stockage.lire(id);
+      if (!source) {
+        notifier('Ce document est introuvable.', 'erreur');
+        return;
+      }
+      const doc = Etat.cloner(source);
+      Object.assign(doc, {
+        id: null, creeLe: null, modifieLe: null, payee: false, payeeLe: null, origine: null,
+        date: Calc.dateIso(new Date())
+      });
+      const origine = { id: source.id, type: source.type, numero: source.numero };
+      if (mode === 'facturer') {
+        doc.type = 'facture';
+        doc.acomptes = Etat.deductionPremiereFacture(doc.acomptes);
+        doc.origine = origine;
+      } else if (mode === 'suivante') {
+        doc.acomptes = Etat.deductionSuivante(doc.acomptes);
+        doc.origine = origine;
+      }
+      doc.numero = await prochainNumero(doc.type);
+      magasin.remplacer(doc, false);
+      $('#modale-historique').close();
+      const messages = {
+        dupliquer: 'Copie créée (n° ' + doc.numero + '). Pensez à l’enregistrer.',
+        facturer: 'Facture n° ' + doc.numero + ' créée depuis le devis ' + source.numero + '. Vérifiez-la puis enregistrez.',
+        suivante: 'Facture suivante n° ' + doc.numero + ' créée : l’acompte suivant est déduit. Vérifiez-la puis enregistrez.'
+      };
+      notifier(messages[mode] || messages.dupliquer);
+    } catch (erreur) {
+      notifier('Création impossible : ' + erreur.message, 'erreur');
+    }
   }
 
   async function supprimerDocument(id) {
     const d = documentsListes.find((x) => x.id === id);
-    const nom = d ? libelleType(d.type) + ' ' + d.numero + (d.client ? ' — ' + d.client : '') : 'ce document';
-    const choix = await question({
-      type: 'warning',
-      message: 'Supprimer définitivement ' + nom + ' ?',
-      detail: 'Cette action est irréversible.',
-      boutons: ['Supprimer', 'Annuler'],
-      defaut: 1,
-      annuler: 1
-    });
-    if (choix !== 0) return;
-    await Stockage.supprimer(id);
-    if (magasin.doc.id === id) {
-      // Le document affiché n'existe plus sur disque : il redevient « non enregistré »
-      magasin.modifier((doc) => {
+    const nom = d
+      ? (d.type === 'devis' ? 'le devis ' : 'la facture ') + d.numero + (d.client ? ' — ' + d.client : '')
+      : 'ce document';
+    try {
+      const choix = await question({
+        type: 'warning',
+        message: 'Supprimer définitivement ' + nom + ' ?',
+        detail: 'Cette action est irréversible.',
+        boutons: ['Supprimer', 'Annuler'],
+        defaut: 1,
+        annuler: 1
+      });
+      if (choix !== 0) return;
+      await Stockage.supprimer(id);
+      if (magasin.doc.id === id) {
+        // Le document affiché n'existe plus sur disque : il redevient « non enregistré »
+        const doc = Etat.cloner(magasin.doc);
         doc.id = null;
         doc.creeLe = null;
-      }, 'suppression');
-      magasin.remplacer(magasin.doc, false);
+        magasin.remplacer(doc, false);
+      }
+      documentsListes = documentsListes.filter((x) => x.id !== id);
+      remplirAnnees();
+      remplirHistorique();
+      notifier('Document supprimé.');
+    } catch (erreur) {
+      notifier('Suppression impossible : ' + erreur.message, 'erreur');
     }
-    documentsListes = documentsListes.filter((x) => x.id !== id);
-    remplirListe();
-    notifier('Document supprimé.');
+    $('#recherche-documents').focus();
   }
 
-  function brancherListe() {
-    $('#recherche-documents').addEventListener('input', remplirListe);
-    $('#liste-documents').addEventListener('click', (e) => {
+  async function marquerPayee(id, payee) {
+    try {
+      const resultat = await Stockage.marquerPayee(id, payee);
+      const d = documentsListes.find((x) => x.id === id);
+      if (d) Object.assign(d, resultat);
+      if (magasin.doc.id === id) {
+        magasin.synchroniser((doc) => Object.assign(doc, resultat));
+      }
+      remplirHistorique();
+      const coche = $('#liste-documents tr[data-id="' + id + '"] input.payee');
+      if (coche) coche.focus();
+      notifier(payee ? 'Facture marquée comme payée.' : 'Facture marquée comme non payée.', 'succes');
+    } catch (erreur) {
+      remplirHistorique();
+      notifier('Statut non enregistré : ' + erreur.message, 'erreur');
+    }
+  }
+
+  /** Contenu CSV de l'historique affiché (séparateur « ; », lisible par Excel en français). */
+  function csvHistorique(liste) {
+    const factures = devisFactures();
+    const champ = (valeur) => {
+      const t = String(valeur === null || valeur === undefined ? '' : valeur);
+      return /[;"\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    };
+    const dateFr = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso.split('-').reverse().join('/') : '');
+    const entete = ['Type', 'Numéro', 'Date', 'Client', 'Objet', 'Total HT', 'TVA', 'Total TTC',
+      'Acomptes déduits', 'Net à payer', 'Statut', 'Payée le', 'Origine'];
+    const lignes = liste.map((d) => [
+      libelleType(d.type), d.numero, dateFr(d.date), d.client, d.objet, d.ht, d.tva, d.total,
+      d.acomptesDeduits, d.arrete, LIBELLES_STATUT[statutDocument(d, factures)], dateFr(d.payeeLe),
+      d.origine ? libelleType(d.origine.type) + ' ' + d.origine.numero : ''
+    ]);
+    return [entete, ...lignes].map((l) => l.map(champ).join(';')).join('\r\n') + '\r\n';
+  }
+
+  async function exporterHistorique() {
+    const factures = devisFactures();
+    const liste = trierHistorique(documentsFiltres(factures), factures);
+    if (!liste.length) {
+      notifier('Aucun document à exporter.', 'erreur');
+      return;
+    }
+    try {
+      const r = await api.exporterCsv('Historique-DevisPro-' + Calc.dateIso(new Date()) + '.csv', csvHistorique(liste));
+      if (!r) return;
+      if (r.erreur) {
+        notifier(r.erreur, 'erreur');
+        return;
+      }
+      notifier('Liste exportée : ' + r.chemin, 'succes', { libelle: 'Ouvrir', action: () => api.ouvrirFichier(r.chemin) });
+    } catch (erreur) {
+      notifier('Export impossible : ' + erreur.message, 'erreur');
+    }
+  }
+
+  function brancherHistorique() {
+    $('#recherche-documents').addEventListener('input', remplirHistorique);
+    ['#filtre-type', '#filtre-annee', '#filtre-statut'].forEach((s) => $(s).addEventListener('change', remplirHistorique));
+    $$('#modale-historique th[data-tri]').forEach((th) => th.addEventListener('click', () => {
+      if (triHistorique.cle === th.dataset.tri) triHistorique.sens = -triHistorique.sens;
+      else Object.assign(triHistorique, { cle: th.dataset.tri, sens: th.dataset.tri === 'date' ? -1 : 1 });
+      remplirHistorique();
+    }));
+    const corps = $('#liste-documents');
+    corps.addEventListener('click', (e) => {
       const bouton = e.target.closest('button[data-action]');
       if (!bouton) return;
       const id = bouton.closest('tr').dataset.id;
       const action = bouton.dataset.action;
       if (action === 'ouvrir') ouvrirDocument(id);
-      else if (action === 'dupliquer') dupliquerDocument(id);
       else if (action === 'supprimer') supprimerDocument(id);
+      else creerDepuis(id, action);
     });
-    $('#liste-documents').addEventListener('dblclick', (e) => {
+    corps.addEventListener('change', (e) => {
+      if (e.target.classList.contains('payee')) marquerPayee(e.target.closest('tr').dataset.id, e.target.checked);
+    });
+    corps.addEventListener('dblclick', (e) => {
       const tr = e.target.closest('tr[data-id]');
-      if (tr && !e.target.closest('button')) ouvrirDocument(tr.dataset.id);
+      if (tr && !e.target.closest('button, label, input')) ouvrirDocument(tr.dataset.id);
     });
+    $('#historique-csv').addEventListener('click', exporterHistorique);
   }
 
   // ===========================================================================
@@ -814,6 +1210,7 @@
     $('#tva-taux').disabled = !tva.active;
     $('#modale-tva').showModal();
     if (tva.active) $('#tva-taux').select();
+    else $('#tva-active').focus();
   }
 
   function brancherTva() {
@@ -904,11 +1301,17 @@
     const resume = $('#resume-acomptes');
     resume.replaceChildren();
     if (!t.acomptes.length) return;
-    const complet = t.pourcentEcheancier === 100;
-    const total = creer('span', complet ? '' : 'alerte', 'Échéancier : ' + Calc.formaterPourcent(t.pourcentEcheancier) + ' %');
-    if (!complet) total.title = 'Le total des acomptes ne fait pas 100 %';
+    // L'échéancier est complet quand la somme des acomptes fait exactement le total
+    const complet = t.ttc <= 0 || t.montantEcheancier === t.ttc;
+    const total = creer('span', complet ? '' : 'alerte',
+      'Échéancier : ' + Calc.formaterPourcent(t.pourcentEcheancier) + '\u00A0% (' + montantAr(t.montantEcheancier) + ')');
+    if (!complet) total.title = 'La somme des acomptes ne fait pas le total du document (' + montantAr(t.ttc) + ')';
     resume.append(total, document.createTextNode(
-      ' · Déduit : ' + Calc.formaterMontant(t.totalAcomptes) + ' Ar · Reste à payer : ' + Calc.formaterMontant(t.reste) + ' Ar'));
+      ' · Déduit : ' + montantAr(t.totalAcomptes) + ' · Reste à payer : ' + montantAr(t.reste)));
+    const plafonnes = t.acomptes.map((a, i) => (a.plafonne ? i + 1 : 0)).filter(Boolean);
+    if (plafonnes.length) {
+      resume.append(creer('span', 'alerte', ' · Acompte n°' + plafonnes.join(', n°') + ' plafonné (le total est dépassé)'));
+    }
   }
 
   function ouvrirAcomptes() {
@@ -955,8 +1358,17 @@
       const cible = e.target;
       const tr = cible.closest('tr');
       if (!tr) return;
+      const i = Number(tr.dataset.index);
       if (cible.classList.contains('deduit')) {
-        magasin.modifier((doc) => { doc.acomptes[Number(tr.dataset.index)].deduit = cible.checked; }, 'acomptes');
+        magasin.modifier((doc) => { doc.acomptes[i].deduit = cible.checked; }, 'acomptes');
+      } else if (cible.classList.contains('pourcent') || cible.classList.contains('montant')) {
+        // Ce qui est affiché (borné entre 0 et le total) est ce qui est mémorisé
+        const calcul = Calc.calculerTotaux(magasin.doc).acomptes[i];
+        magasin.modifier((doc) => {
+          const a = doc.acomptes[i];
+          if (a.mode === 'montant') a.montant = calcul.montant;
+          else a.pourcent = calcul.pourcent;
+        }, 'acomptes');
       }
       rafraichirFenetreAcomptes();
     });
@@ -966,6 +1378,8 @@
       const i = Number(bouton.closest('tr').dataset.index);
       magasin.modifier((doc) => doc.acomptes.splice(i, 1), 'acomptes');
       afficherListeAcomptes();
+      const restants = $$('#liste-acomptes input.pourcent');
+      (restants[Math.min(i, restants.length - 1)] || $('#acompte-ajouter')).focus();
     });
 
     $('#acompte-ajouter').addEventListener('click', ajouterAcompte);
@@ -998,8 +1412,10 @@
 
     // Sur la page, le bloc « MODALITÉS DE PAIEMENT » ouvre les fenêtres correspondantes
     el.echeancier.addEventListener('click', ouvrirAcomptes);
+    el.titreModalites.addEventListener('click', ouvrirAcomptes);
     el.aideModalites.addEventListener('click', ouvrirAcomptes);
     el.paiements.addEventListener('click', () => ouvrirPaiement());
+    el.aidePaiement.addEventListener('click', () => ouvrirPaiement());
   }
 
   // ===========================================================================
@@ -1080,7 +1496,7 @@
         try {
           await padSignature.importer(lecteur.result, $('#signature-fond-transparent').checked);
         } catch (erreur) {
-          notifier('Image illisible : ' + erreur.message, 'erreur');
+          notifier('Image illisible (format non reconnu). Essayez un fichier PNG ou JPEG.', 'erreur');
         }
       };
       lecteur.readAsDataURL(fichier);
@@ -1167,15 +1583,19 @@
   // ===========================================================================
 
   magasin.abonner((_doc, raison) => {
-    if (raison === 'remplacement') afficherDocument();
-    else rafraichirCalculs();
+    if (raison === 'remplacement') {
+      bascule = { numeros: {}, deductionAuto: false };
+      afficherDocument();
+    } else {
+      rafraichirCalculs();
+    }
   });
 
   async function demarrer() {
     construireElementsFixes();
     brancherPage();
     brancherBarreOutils();
-    brancherListe();
+    brancherHistorique();
     brancherTva();
     brancherAcomptes();
     brancherPaiement();
@@ -1230,6 +1650,16 @@
     }
     return morceaux.map(texte).filter(Boolean).join(' ');
   });
+
+  /** Attend qu'une condition devienne vraie (au plus `delai` ms). */
+  async function attendre(condition, delai) {
+    const fin = Date.now() + (delai || 3000);
+    while (Date.now() < fin) {
+      if (condition()) return true;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return false;
+  }
 
   /** Simule une saisie au clavier dans un champ. */
   function saisir(champ, valeur) {
@@ -1286,11 +1716,16 @@
 
       // --- Devis / Facture
       $('.bascule-type button[data-type="devis"]').click();
+      await attendre(() => magasin.doc.type === 'devis');
       egal('Libellé devis', texte(el.libelleNumero), 'DEVIS N°:');
       egal('Phrase d’arrêté du devis', texte(el.arretePhrase),
         'Arrêté le présent devis à la somme de: UN MILLION CENT QUATRE VINGT DEUX MILLE ARIARY');
+      await deuxImages();
+      egal('Devis non enregistré : numéro de la série des devis', el.numero.value, '1 /ERZ/ DEVIS /26');
       $('.bascule-type button[data-type="facture"]').click();
+      await attendre(() => el.numero.value === '48 /ERZ/ FACPRO /26');
       egal('Retour à la facture', texte(el.libelleNumero), 'FACTURE N°:');
+      egal('Retour à la facture : numéro rendu', el.numero.value, '48 /ERZ/ FACPRO /26');
 
       // --- TVA désactivée : seul MONTANT TOTAL
       ouvrirTva();
@@ -1315,7 +1750,8 @@
       egal('Pourcentages de l’échéancier', valeurs('pourcent'), '20 | 30 | 50');
       egal('Montants de l’échéancier', valeurs('montant'), '236 400 | 354 600 | 591 000');
       egal('Première facture : seul le n°1 est déduit', acomptes('deduit').map((c) => c.checked).join(','), 'true,false,false');
-      egal('Ligne « Acompte n°1 »', texte($('tr[data-total="acompte-1"] .libelle', el.blocFin)), 'Acompte n°1 (20 %)');
+      egal('Ligne « ACOMPTE N°1 DÉDUIT »', texte($('tr[data-total="acompte-1"] .libelle', el.blocFin)), 'ACOMPTE N°1 DÉDUIT (20 %)');
+      egal('Ligne « RESTE À PAYER »', texte($('tr[data-total="reste"] .libelle', el.blocFin)), 'RESTE À PAYER');
       egal('Montant de l’acompte n°1', valeurTotal('acompte-1'), '236 400');
       egal('Reste à payer', valeurTotal('reste'), '945 600');
       egal('Facture : arrêté = reste à payer', texte(el.arretePhrase),
@@ -1347,13 +1783,31 @@
       egal('Quatrième acompte ajouté', acomptes('pourcent').length, 4);
       saisir(acomptes('pourcent')[3], '10');
       verifier('Alerte si l’échéancier dépasse 100 %', !!$('#resume-acomptes .alerte') && /110/.test(texte($('#resume-acomptes'))), texte($('#resume-acomptes')));
+      verifier('Alerte à l’écran sur la page', !el.alertes.hidden && /110/.test(texte(el.alertes)), texte(el.alertes));
       $$('#liste-acomptes button.supprimer')[3].click();
       egal('Quatrième acompte supprimé', acomptes('pourcent').length, 3);
 
-      // Devis : la phrase d'arrêté garde le TTC
+      verifier('Plus d’alerte une fois l’échéancier à 100 %', el.alertes.hidden, texte(el.alertes));
+
+      // Acompte à 0 % déduit : pas de ligne « ACOMPTE … 0 » imprimée
+      magasin.modifier((doc) => { doc.acomptes.push(Etat.nouvelAcompte(0, '', true)); }, 'acomptes');
+      verifier('Acompte déduit à 0 Ar non imprimé', !$('tr[data-total="acompte-4"]', el.blocFin), 'ligne présente');
+      magasin.modifier((doc) => { doc.acomptes.pop(); }, 'acomptes');
+
+      // Acompte plafonné : pourcentage réellement déduit + alerte
+      magasin.modifier((doc) => { doc.acomptes[0].pourcent = 80; doc.acomptes[1].pourcent = 50; }, 'acomptes');
+      egal('Acompte plafonné : libellé', texte($('tr[data-total="acompte-2"] .libelle', el.blocFin)), 'ACOMPTE N°2 DÉDUIT (20 %)');
+      egal('Acompte plafonné : montant', valeurTotal('acompte-2'), '236 400');
+      verifier('Acompte plafonné : alerte', /plafonné/.test(texte(el.alertes)), texte(el.alertes));
+      magasin.modifier((doc) => { doc.acomptes[0].pourcent = 20; doc.acomptes[1].pourcent = 30; }, 'acomptes');
+      afficherListeAcomptes();
+
+      // Devis : sans déduction l'arrêté est le TTC ; avec déduction, le reste à payer (cohérent avec le tableau)
       $('.bascule-type button[data-type="devis"]').click();
-      egal('Devis : arrêté = TTC', texte(el.arreteChiffres), '(Ar 1 182 000)');
+      await attendre(() => texte(el.libelleNumero) === 'DEVIS N°:');
+      egal('Devis avec acomptes déduits : arrêté = reste', texte(el.arreteChiffres), '(Ar 591 000)');
       $('.bascule-type button[data-type="facture"]').click();
+      await attendre(() => texte(el.libelleNumero) === 'FACTURE N°:');
       $('#modale-acomptes').close();
       await deuxImages();
       await api.selftest.exporter('apercu-acomptes');
@@ -1365,7 +1819,7 @@
       ouvrirPaiement();
       $('#paiement-especes').click();
       $('#paiement-virement').click();
-      egal('Paiement en espèces imprimé', texte(el.paiements), 'PAIEMENT:EN ESPECES');
+      egal('Paiement en espèces imprimé', texte(el.paiements), 'PAIEMENT:EN ESPÈCES');
       $('#paiement-especes').click();
       $('#paiement-virement').click();
       $('#modale-paiement').close();
@@ -1399,6 +1853,70 @@
       const relu = await Stockage.lire(magasin.doc.id);
       egal('Relecture du document', relu && Etat.empreinte(relu), Etat.empreinte(magasin.doc));
       egal('Numéro suivant après enregistrement', await prochainNumero('facture'), '49 /ERZ/ FACPRO /26');
+
+      // --- Historique : statut payé, facture suivante, devis facturé, filtres, export Excel
+      const lignesHistorique = () => $$('#liste-documents tr');
+      const celluleHistorique = (tr, n) => texte(tr.children[n]);
+      await ouvrirHistorique();
+      egal('Historique : 1 document', lignesHistorique().length, 1);
+      let ligne48 = lignesHistorique()[0];
+      egal('Historique : total TTC', celluleHistorique(ligne48, 4), '1 182 000 Ar');
+      egal('Historique : net à payer', celluleHistorique(ligne48, 5), '945 600 Ar');
+      verifier('Historique : facture à encaisser', /À encaisser/.test(celluleHistorique(ligne48, 6)), celluleHistorique(ligne48, 6));
+      $('input.payee', ligne48).click();
+      await attendre(() => documentsListes[0] && documentsListes[0].payee);
+      verifier('Historique : facture marquée payée', documentsListes[0].payee && magasin.doc.payee && !magasin.estModifie(), JSON.stringify(documentsListes[0]));
+      verifier('Historique : statut payé enregistré sur disque', (await Stockage.lire(magasin.doc.id)).payee === true, 'non enregistré');
+      $('button[data-action="suivante"]', lignesHistorique()[0]).click();
+      await attendre(() => magasin.doc.numero === '49 /ERZ/ FACPRO /26');
+      egal('Facture suivante : numéro', magasin.doc.numero, '49 /ERZ/ FACPRO /26');
+      egal('Facture suivante : acomptes déduits', magasin.doc.acomptes.map((a) => a.deduit).join(','), 'true,true,false');
+      egal('Facture suivante : origine', magasin.doc.origine && magasin.doc.origine.numero, '48 /ERZ/ FACPRO /26');
+      egal('Facture suivante : net à payer', texte(el.arreteChiffres), '(Ar 591 000)');
+      verifier('Facture suivante : non payée', magasin.doc.payee === false, 'payée');
+      await actionEnregistrer();
+
+      const devis = Etat.documentVierge();
+      Object.assign(devis, { type: 'devis', destinataire: 'SOCIETE RAKOTO SARL\nAnalakely', objet: 'Peinture façade' });
+      devis.lignes = [{ designation: 'Peinture façade', unite: 'm²', quantite: 100, prixUnitaire: 5000 }];
+      devis.acomptes = Etat.echeancierType('devis');
+      devis.numero = await prochainNumero('devis');
+      egal('Premier devis : numéro de la série devis', devis.numero, '1 /ERZ/ DEVIS /26');
+      magasin.remplacer(devis, false);
+      await actionEnregistrer();
+      await ouvrirHistorique();
+      egal('Historique : 3 documents', lignesHistorique().length, 3);
+      $('#filtre-type').value = 'devis';
+      $('#filtre-type').dispatchEvent(new Event('change'));
+      egal('Filtre « Devis »', lignesHistorique().length, 1);
+      $('button[data-action="facturer"]', lignesHistorique()[0]).click();
+      await attendre(() => magasin.doc.type === 'facture' && magasin.doc.origine && magasin.doc.origine.type === 'devis');
+      egal('Facturer un devis : numéro', magasin.doc.numero, '50 /ERZ/ FACPRO /26');
+      egal('Facturer un devis : premier acompte déduit', magasin.doc.acomptes.map((a) => a.deduit).join(','), 'true,false,false');
+      egal('Facturer un devis : client repris', Etat.nomClient(magasin.doc), 'SOCIETE RAKOTO SARL');
+      await actionEnregistrer();
+      await ouvrirHistorique();
+      $('#filtre-type').value = '';
+      $('#filtre-statut').value = 'devis-facture';
+      $('#filtre-statut').dispatchEvent(new Event('change'));
+      egal('Filtre « Devis facturés »', lignesHistorique().length, 1);
+      verifier('Devis marqué « Facturé »', /Facturé \(n° 50/.test(celluleHistorique(lignesHistorique()[0], 6)), celluleHistorique(lignesHistorique()[0], 6));
+      $('#filtre-statut').value = 'payee';
+      $('#filtre-statut').dispatchEvent(new Event('change'));
+      egal('Filtre « Factures payées »', lignesHistorique().length, 1);
+      $('#filtre-statut').value = '';
+      $('#filtre-statut').dispatchEvent(new Event('change'));
+      saisir($('#recherche-documents'), 'vivo');
+      egal('Recherche « vivo »', lignesHistorique().length, 2);
+      saisir($('#recherche-documents'), 'façade');
+      egal('Recherche dans l’objet', lignesHistorique().length, 2);
+      saisir($('#recherche-documents'), '');
+      verifier('Résumé de l’historique', /4 documents affichés/.test(texte($('#resume-historique'))) && /à encaisser/.test(texte($('#resume-historique'))),
+        texte($('#resume-historique')));
+      const csv = csvHistorique(documentsListes);
+      verifier('Export Excel : en-tête', csv.startsWith('Type;Numéro;Date;Client;Objet;Total HT;TVA;Total TTC;Acomptes déduits;Net à payer;Statut;Payée le;Origine'), csv.split('\n')[0]);
+      verifier('Export Excel : facture payée', /Facture;48 \/ERZ\/ FACPRO \/26;14\/09\/2026;VIVO ENERGIE Madagascar;.*;985000;197000;1182000;236400;945600;Payée;/.test(csv), csv);
+      $('#modale-historique').close();
 
       // --- Exemple de l'utilisateur : 562 500 Ar sans TVA, acompte de 20 % déduit → 450 000 Ar
       const exemple = Etat.documentVierge();

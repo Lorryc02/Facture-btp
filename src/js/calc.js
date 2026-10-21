@@ -38,6 +38,7 @@
    *   versUnites('75 000', 0)  → 75000
    *   versUnites('1.234,56', 2)→ 123456
    *   versUnites('abc', 2)     → 0
+   *   versUnites('150.000', 0) → 150000 (montant en Ariary : « .000 » = milliers)
    */
   function versUnites(valeur, decimales) {
     if (typeof valeur === 'number') {
@@ -50,7 +51,7 @@
     if (typeof valeur !== 'string') return 0;
 
     // Supprime tous les espaces (y compris insécables) et une éventuelle unité finale
-    let t = valeur.replace(/\s+/g, '').replace(/(ar|mga|%)$/i, '');
+    let t = valeur.replace(/\s+/g, '').replace(/(ariary|ar|mga|%)$/i, '');
     let signe = 1;
     if (/^[+-]/.test(t)) {
       if (t[0] === '-') signe = -1;
@@ -73,6 +74,9 @@
     } else if (virgules + points > 1) {
       // Un seul type de séparateur répété (1.234.567) : séparateurs de milliers
       entier = t.replace(/[.,]/g, '');
+    } else if (virgules + points === 1 && decimales === 0 && /^\d{1,3}[.,]\d{3}$/.test(t)) {
+      // Montant entier écrit à la malgache : « 150.000 » ou « 45,000 » = milliers
+      entier = t.replace(/[.,]/, '');
     } else if (virgules + points === 1) {
       const pos = t.search(/[.,]/);
       entier = t.slice(0, pos);
@@ -164,9 +168,12 @@
 
   /**
    * Échéancier d'acomptes (autant qu'on veut : 20 %, 30 %, 50 %…).
-   * Les acomptes marqués « déduit » sont retirés du TTC, dans l'ordre,
-   * sans jamais rendre le reste à payer négatif.
-   * @returns {{ lignes: Array<{montant, pourcent, deduit, montantDeduit}>, totalDeduit: number, totalPourcent: number }}
+   *  - Les acomptes en % sont arrondis sur leur cumul : 20 % + 30 % + 50 % font
+   *    exactement le TTC, sans écart d'un ariary.
+   *  - Les acomptes marqués « déduit » sont retirés du TTC, dans l'ordre, sans jamais
+   *    rendre le reste à payer négatif (un acompte qui dépasse est plafonné).
+   * @returns {{ lignes: Array<{montant, pourcent, deduit, montantDeduit, pourcentDeduit, plafonne}>,
+   *             totalDeduit: number, totalPourcent: number, totalMontants: number }}
    */
   function calculerAcomptes(ttc, acomptes) {
     const base = Math.max(0, Math.round(Number(ttc)) || 0);
@@ -174,23 +181,46 @@
     let disponible = base;
     let totalDeduit = 0;
     let totalCentiemes = 0;
+    let totalMontants = 0;
+    let cumulCentiemes = 0; // cumul des acomptes en %
+    let cumulMontant = 0;   // montant cumulé arrondi correspondant
     const lignes = liste.map((a) => {
-      const { montant, pourcent } = calculerAcompte(base, a);
+      let montant;
+      let pourcent;
+      if (a && a.mode === 'montant') {
+        ({ montant, pourcent } = calculerAcompte(base, a));
+      } else {
+        const centiemes = borner(lireCentiemes(a && a.pourcent), 0, 10000);
+        cumulCentiemes += centiemes;
+        const totalCumule = diviserArrondi(BigInt(base) * BigInt(cumulCentiemes), 10000);
+        montant = borner(totalCumule - cumulMontant, 0, base);
+        cumulMontant = totalCumule;
+        pourcent = centiemes / 100;
+      }
       const deduit = !!(a && a.deduit);
       const montantDeduit = deduit ? Math.min(montant, disponible) : 0;
       disponible -= montantDeduit;
       totalDeduit += montantDeduit;
+      totalMontants += montant;
       totalCentiemes += Math.round(pourcent * 100);
-      return { montant, pourcent, deduit, montantDeduit };
+      return {
+        montant,
+        pourcent,
+        deduit,
+        montantDeduit,
+        pourcentDeduit: base > 0 ? diviserArrondi(BigInt(montantDeduit) * 10000n, base) / 100 : 0,
+        plafonne: deduit && montantDeduit < montant
+      };
     });
-    return { lignes, totalDeduit, totalPourcent: totalCentiemes / 100 };
+    return { lignes, totalDeduit, totalPourcent: totalCentiemes / 100, totalMontants };
   }
 
   /**
    * Tous les totaux d'un document.
    *  HT = somme des lignes ; TVA = arrondi(HT × taux) ; TTC = HT + TVA ;
    *  reste à payer = TTC − acomptes déduits ;
-   *  montant arrêté : facture → reste à payer ; devis → TTC (= HT si la TVA est désactivée).
+   *  montant arrêté (phrase « Arrêtée… ») = reste à payer (= TTC s'il n'y a aucun acompte déduit,
+   *  ce qui est le cas par défaut d'un devis ; = HT si la TVA est désactivée).
    */
   function calculerTotaux(doc) {
     const d = doc || {};
@@ -215,8 +245,9 @@
       acomptes: echeancier.lignes,
       totalAcomptes: echeancier.totalDeduit,
       pourcentEcheancier: echeancier.totalPourcent,
+      montantEcheancier: echeancier.totalMontants,
       reste,
-      arrete: d.type === 'devis' ? ttc : reste
+      arrete: reste
     };
   }
 

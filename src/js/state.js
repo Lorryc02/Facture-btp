@@ -10,7 +10,10 @@
  *   tva: { active, taux },
  *   acomptes: [{ libelle, mode: 'pourcent' | 'montant', pourcent, montant, deduit }],
  *   paiement: { especes, virement: { actif, banque, compte } },
- *   afficherCachet, afficherSignature, creeLe, modifieLe
+ *   afficherCachet, afficherSignature,
+ *   payee, payeeLe,                          (factures : réglée ou non, pour l'historique)
+ *   origine: { id, type, numero } | null,   (devis facturé, facture précédente…)
+ *   creeLe, modifieLe
  * }
  */
 (function (racine, fabrique) {
@@ -50,11 +53,36 @@
   }
 
   /**
-   * Reprend un échéancier pour un nouveau document : mêmes pourcentages et libellés,
-   * déductions remises à zéro (facture : seul le premier acompte est déduit).
+   * Reprend un échéancier pour un NOUVEAU chantier : mêmes pourcentages et libellés ;
+   * un acompte saisi en Ar est converti en pourcentage (son montant ne vaut que pour
+   * l'ancien chantier) ; déductions remises à zéro (facture : seul le premier est déduit).
+   * @param {Array} acomptes échéancier du document précédent
+   * @param {string} type type du nouveau document
+   * @param {object} [totaux] Calc.calculerTotaux du document précédent (pour la conversion)
    */
-  function echeancierPourNouveau(acomptes, type) {
-    return (acomptes || []).map((a, i) => Object.assign({}, a, { deduit: type === 'facture' && i === 0 }));
+  function echeancierPourNouveau(acomptes, type, totaux) {
+    return (acomptes || []).map((a, i) => {
+      const enPourcent = a.mode === 'montant' && totaux && totaux.acomptes[i] ? totaux.acomptes[i].pourcent : a.pourcent;
+      return Object.assign({}, a, {
+        mode: 'pourcent',
+        pourcent: a.mode === 'montant' ? enPourcent : a.pourcent,
+        montant: 0,
+        deduit: type === 'facture' && i === 0
+      });
+    });
+  }
+
+  /** Même chantier, première facture : on garde l'échéancier tel quel, seul le premier acompte est déduit. */
+  function deductionPremiereFacture(acomptes) {
+    return (acomptes || []).map((a, i) => Object.assign({}, a, { deduit: i === 0 }));
+  }
+
+  /** Facture suivante du même chantier : l'acompte suivant non encore déduit est déduit en plus. */
+  function deductionSuivante(acomptes) {
+    const liste = (acomptes || []).map((a) => Object.assign({}, a));
+    const suivant = liste.find((a) => !a.deduit);
+    if (suivant) suivant.deduit = true;
+    return liste;
   }
 
   /** Numéro proposé par défaut pour un type donné (année courante). */
@@ -83,6 +111,9 @@
       },
       afficherCachet: true,
       afficherSignature: true,
+      payee: false,
+      payeeLe: null,
+      origine: null,
       creeLe: null,
       modifieLe: null
     };
@@ -129,6 +160,13 @@
     return [];
   }
 
+  /** Document d'origine (devis facturé, facture précédente) ou null. */
+  function normaliserOrigine(origine) {
+    const o = objet(origine);
+    if (typeof o.id !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(o.id)) return null;
+    return { id: o.id, type: o.type === 'devis' ? 'devis' : 'facture', numero: texte(o.numero, '') };
+  }
+
   /** Complète et corrige un document lu sur disque. */
   function normaliser(source) {
     const s = objet(source);
@@ -162,6 +200,9 @@
       },
       afficherCachet: booleen(s.afficherCachet, true),
       afficherSignature: booleen(s.afficherSignature, true),
+      payee: booleen(s.payee, false),
+      payeeLe: /^\d{4}-\d{2}-\d{2}$/.test(s.payeeLe) ? s.payeeLe : null,
+      origine: normaliserOrigine(s.origine),
       creeLe: texte(s.creeLe, null),
       modifieLe: texte(s.modifieLe, null)
     };
@@ -251,9 +292,20 @@
         mutateur(doc);
         notifier(raison || 'modification');
       },
-      marquerEnregistre() {
-        reference = empreinte(doc);
+      /**
+       * Marque le document comme enregistré. `version` = copie réellement envoyée au disque :
+       * ce qui a été tapé pendant l'enregistrement reste « non enregistré ».
+       */
+      marquerEnregistre(version) {
+        reference = empreinte(version || doc);
         notifier('enregistrement');
+      },
+      /** Modifie le document sans changer son état « enregistré / non enregistré » (ex. statut payé). */
+      synchroniser(mutateur) {
+        const etaitModifie = this.estModifie();
+        mutateur(doc);
+        if (!etaitModifie) reference = empreinte(doc);
+        notifier('synchronisation');
       },
       estModifie() {
         return reference === null || empreinte(doc) !== reference;
@@ -271,6 +323,8 @@
     nouvelAcompte,
     echeancierType,
     echeancierPourNouveau,
+    deductionPremiereFacture,
+    deductionSuivante,
     numeroParDefaut,
     documentVierge,
     documentExemple,

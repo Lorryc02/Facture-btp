@@ -9,7 +9,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/calc.test.js tests/numberToWords.test.js",
+    "test": "node --test tests/calc.test.js tests/numberToWords.test.js tests/state.test.js",
     "selftest": "electron . --selftest",
     "icon": "node scripts/make-icon.js",
     "build": "electron-builder --win dir",

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('devisPro', {
   lireDocument: (id) => appeler('docs:lire', id),
   enregistrerDocument: (doc) => appeler('docs:enregistrer', doc),
   supprimerDocument: (id) => appeler('docs:supprimer', id),
+  marquerPayee: (id, payee) => appeler('docs:marquerPayee', id, payee),
 
   // Brouillon automatique (userData/brouillon.json)
   lireBrouillon: () => appeler('brouillon:lire'),
@@ -32,6 +33,7 @@ contextBridge.exposeInMainWorld('devisPro', {
   // Sorties
   exporterPdf: (nomFichier) => appeler('pdf:exporter', nomFichier),
   ouvrirFichier: (chemin) => appeler('fichier:ouvrir', chemin),
+  exporterCsv: (nomFichier, contenu) => appeler('fichier:exporterCsv', nomFichier, contenu),
   imprimer: () => appeler('imprimer'),
 
   // Boîte de dialogue native (boutons en français)

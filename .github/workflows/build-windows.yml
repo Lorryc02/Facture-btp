@@ -1,5 +1,7 @@
 # Construit DevisPro sous Windows, lance DevisPro.exe en mode autotest
-# (vérifie qu'il démarre et que le PDF est produit), puis publie le zip.
+# (vérifie qu'il démarre et que le PDF est produit), puis publie le zip :
+#  - en artefact du workflow ;
+#  - dans la Release « DevisPro (dernière version) » (lien de téléchargement direct).
 name: Build Windows
 
 on:
@@ -10,6 +12,8 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -52,3 +56,14 @@ jobs:
           name: autotest-windows
           path: dist/selftest-exe
           if-no-files-found: ignore
+
+      - name: Publier la version téléchargeable (Releases)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete devispro-dernier --yes --cleanup-tag 2>$null
+          $global:LASTEXITCODE = 0
+          $notes = "DevisPro pour Windows, construit et vérifié sous Windows (DevisPro.exe --selftest) depuis le commit $env:GITHUB_SHA.`n`nTéléchargez DevisPro-win-unpacked.zip, décompressez-le, puis lancez DevisPro\DevisPro.exe."
+          gh release create devispro-dernier dist/DevisPro-win-unpacked.zip --title "DevisPro (dernière version)" --notes $notes --target $env:GITHUB_SHA --latest

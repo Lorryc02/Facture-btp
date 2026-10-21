@@ -94,10 +94,13 @@ function nouvelId() {
 // IPC : documents, brouillon, réglages, signature
 // ---------------------------------------------------------------------------
 
+// Nom de fichier d'un document enregistré par DevisPro (les copies « … - Copie.json » sont ignorées)
+const NOM_DOCUMENT = /^[A-Za-z0-9_-]{1,80}\.json$/;
+
 ipcMain.handle('docs:lister', async () => {
   let fichiers = [];
   try {
-    fichiers = (await fsp.readdir(dossierDocuments())).filter((f) => f.endsWith('.json'));
+    fichiers = (await fsp.readdir(dossierDocuments())).filter((f) => NOM_DOCUMENT.test(f));
   } catch {
     return [];
   }
@@ -113,9 +116,19 @@ ipcMain.handle('docs:lister', async () => {
       type: doc.type,
       numero: doc.numero,
       client: Etat.nomClient(doc),
+      objet: doc.objet.replace(/\s+/g, ' ').trim().slice(0, 160),
       date: doc.date,
       dateTexte: Calc.formaterDateLongue(doc.date),
+      ht: totaux.ht,
+      tva: totaux.tvaActive ? totaux.tva : 0,
       total: totaux.ttc,
+      acomptesDeduits: totaux.totalAcomptes,
+      arrete: totaux.arrete,
+      nbAcomptes: doc.acomptes.length,
+      acomptesRestants: doc.acomptes.filter((a) => !a.deduit).length,
+      payee: doc.payee,
+      payeeLe: doc.payeeLe,
+      origine: doc.origine,
       creeLe: doc.creeLe,
       modifieLe: doc.modifieLe
     });
@@ -140,6 +153,20 @@ ipcMain.handle('docs:enregistrer', async (_e, document) => {
   doc.modifieLe = maintenant;
   await ecrireAtomique(path.join(dossierDocuments(), doc.id + '.json'), Etat.serialiser(doc));
   return doc;
+});
+
+// Historique : marque une facture comme payée (ou non) sans l'ouvrir
+ipcMain.handle('docs:marquerPayee', async (_e, id, payee) => {
+  const chemin = path.join(dossierDocuments(), verifierId(id) + '.json');
+  const brut = await lireJson(chemin, null);
+  if (!brut) throw new Error('Document introuvable');
+  const doc = Etat.normaliser(brut);
+  doc.id = id;
+  doc.payee = !!payee;
+  doc.payeeLe = payee ? Calc.dateIso(new Date()) : null;
+  doc.modifieLe = new Date().toISOString();
+  await ecrireAtomique(chemin, Etat.serialiser(doc));
+  return { payee: doc.payee, payeeLe: doc.payeeLe, modifieLe: doc.modifieLe };
 });
 
 ipcMain.handle('docs:supprimer', async (_e, id) => {
@@ -216,6 +243,31 @@ ipcMain.handle('pdf:exporter', async (_e, nomFichier) => {
   fichiersExportes.add(chemin);
   await ecrireAtomique(cheminReglages(), JSON.stringify(
     Object.assign({}, reglages, { dossierPdf: path.dirname(chemin) }), null, 2));
+  return { chemin };
+});
+
+// Historique : export de la liste en CSV (s'ouvre dans Excel ; séparateur « ; », UTF-8 avec BOM)
+ipcMain.handle('fichier:exporterCsv', async (_e, nomFichier, contenu) => {
+  let nom = path.basename(String(nomFichier || 'Historique.csv')).replace(/[<>:"/\\|?*]/g, '-');
+  if (!/\.csv$/i.test(nom)) nom += '.csv';
+  const reglages = await lireJson(cheminReglages(), {});
+  let dossier = reglages.dossierPdf;
+  if (!dossier || !fs.existsSync(dossier)) dossier = app.getPath('documents');
+  const choix = await dialog.showSaveDialog(fenetre, {
+    title: 'Exporter l’historique',
+    defaultPath: path.join(dossier, nom),
+    buttonLabel: 'Enregistrer',
+    filters: [{ name: 'Fichier CSV (Excel)', extensions: ['csv'] }]
+  });
+  if (choix.canceled || !choix.filePath) return null;
+  let chemin = choix.filePath;
+  if (!/\.csv$/i.test(chemin)) chemin += '.csv';
+  try {
+    await fsp.writeFile(chemin, '\uFEFF' + String(contenu || ''), 'utf8');
+  } catch (erreur) {
+    return { erreur: "Impossible d'écrire le fichier. Est-il ouvert dans un autre programme ?\n" + erreur.message };
+  }
+  fichiersExportes.add(chemin);
   return { chemin };
 });
 
@@ -321,6 +373,7 @@ ipcMain.handle('selftest:taper', async (_e, texte) => {
 });
 
 ipcMain.handle('selftest:terminer', async (_e, rapport) => {
+  if (!MODE_SELFTEST) throw new Error('Réservé à l’autotest');
   const r = rapport || { succes: false, controles: [] };
   const lignes = (r.controles || []).map((c) => (c.ok ? '  OK    ' : '  ÉCHEC ') + c.nom + (c.ok ? '' : ' → ' + c.detail));
   const texte = ['DevisPro — autotest de l’interface', ...lignes,
@@ -333,6 +386,8 @@ ipcMain.handle('selftest:terminer', async (_e, rapport) => {
 });
 
 function terminerSelftest(code) {
+  // Le dossier effacé est TOUJOURS le dossier temporaire de l'autotest, jamais les vraies données
+  if (!MODE_SELFTEST || !path.basename(dossierDonnees()).startsWith('DevisPro-selftest-')) return app.exit(code);
   fsp.rm(dossierDonnees(), { recursive: true, force: true }).finally(() => app.exit(code));
 }
 

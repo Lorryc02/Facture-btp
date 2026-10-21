@@ -6,6 +6,12 @@ et le PDF ou l'impression reproduisent le modèle `reference/facture-modele.jpg`
 
 ![Aperçu](docs/apercu.png)
 
+## Télécharger
+
+Page **Releases** du dépôt GitHub → « DevisPro (dernière version) » → fichier
+`DevisPro-win-unpacked.zip`. Il est reconstruit et vérifié sous Windows à chaque modification
+(workflow `.github/workflows/build-windows.yml`, qui lance `DevisPro.exe --selftest`).
+
 ## Utilisation
 
 1. Décompressez `DevisPro-win-unpacked.zip`, puis lancez `DevisPro\DevisPro.exe`
@@ -23,16 +29,28 @@ et le PDF ou l'impression reproduisent le modèle `reference/facture-modele.jpg`
 5. **Acomptes** : autant d'acomptes que nécessaire (bouton « Échéancier 20 / 30 / 50 » ou
    « + Ajouter un acompte »). Pour chacun : le pourcentage **ou** le montant en Ar (l'un met
    l'autre à jour), un libellé libre (« Début des travaux », « Fin des travaux »…) et une case
-   **Déduit**. Les acomptes cochés sont retirés du total (lignes « Acompte n°… » puis
-   « Reste à payer »). Sur une **facture**, la phrase « Arrêtée la présente facture à la somme
-   de: … » reprend le **reste à payer** ; pour une première facture, seul le premier acompte est
-   déduit (cochez les suivants sur les factures suivantes). Sur un **devis**, la phrase garde le
-   total TTC. L'échéancier et les moyens de paiement sont imprimés sous le titre
-   **MODALITÉS DE PAIEMENT** (cliquez dessus pour les modifier).
+   **Déduit**. Les acomptes cochés sont retirés du total (lignes « ACOMPTE N°1 DÉDUIT (20 %) »
+   puis « RESTE À PAYER »), et la phrase « Arrêtée la présente facture à la somme de: … »
+   reprend le **reste à payer**. Pour une première facture, seul le premier acompte est déduit ;
+   la facture suivante se crée depuis l'**Historique** (« Facture suivante » déduit l'acompte
+   suivant). Un **devis** ne déduit rien par défaut : sa phrase donne le total TTC.
+   L'échéancier et les moyens de paiement sont imprimés sous le titre **MODALITÉS DE PAIEMENT**
+   (cliquez dessus pour les modifier). Un cadre orange, visible à l'écran seulement, signale un
+   échéancier qui ne fait pas 100 %, un acompte plafonné ou un montant arrêté à zéro.
 6. **Enregistrer** (Ctrl+S), **Exporter PDF** (Ctrl+E, nom proposé
-   `Facture-48-ERZ-FACPRO-26.pdf`), **Imprimer** (Ctrl+P), **Ouvrir** (Ctrl+O : ouvrir,
-   dupliquer, supprimer), **Nouveau** (Ctrl+N : numéro suivant automatique, ex.
-   `48 /ERZ/ FACPRO /26` → `49 /ERZ/ FACPRO /26`).
+   `Facture-48-ERZ-FACPRO-26.pdf`), **Imprimer** (Ctrl+P), **Nouveau** (Ctrl+N : numéro suivant
+   automatique, ex. `48 /ERZ/ FACPRO /26` → `49 /ERZ/ FACPRO /26`).
+7. **Historique** (Ctrl+O ou Ctrl+H) : tous les devis et factures enregistrés.
+   - Recherche (numéro, client, objet, montant), filtres par type, année et statut, tri en
+     cliquant sur les titres de colonnes.
+   - Colonnes « Total TTC » et « Net à payer » (après acomptes déduits), statut : case
+     **Payée** pour chaque facture (« À encaisser » sinon), « Facturé » / « En attente » pour
+     un devis.
+   - Actions : **Ouvrir**, **Facturer** (crée la facture d'un devis, même contenu, premier acompte
+     déduit), **Facture suivante** (même chantier, l'acompte suivant est déduit en plus),
+     **Dupliquer**, **×** (supprimer, avec confirmation).
+   - Résumé en bas : net facturé, payé, à encaisser ; **Exporter la liste (Excel)** crée un
+     fichier CSV de la liste affichée.
 
 Un brouillon est gardé automatiquement toutes les 3 secondes et rouvert au lancement suivant.
 À la fermeture, DevisPro prévient s'il reste des modifications non enregistrées.
@@ -68,8 +86,9 @@ npm run icon         # régénère build/icon.ico
 ```
 
 Sous Linux : `xvfb-run -a npm run selftest -- --no-sandbox`.
-L'autotest vérifie aussi l'interface (75 contrôles : totaux, TVA, acomptes, paiement, lignes,
-frappe clavier réelle dans la première ligne, enregistrement, document de plusieurs pages). L'exécutable accepte la même option :
+L'autotest vérifie aussi l'interface (109 contrôles : totaux, TVA, acomptes, paiement, lignes,
+frappe clavier réelle dans la première ligne, enregistrement, historique, document de plusieurs
+pages). L'exécutable accepte la même option :
 `DevisPro.exe --selftest --selftest-dir=C:\chemin\sortie`.
 
 Le workflow GitHub Actions `.github/workflows/build-windows.yml` refait le build sous Windows,
@@ -107,6 +126,12 @@ Pris sans pouvoir demander, à revoir si besoin :
 - **Libellés** : « FACTURE N°: » collé au numéro et « TVA 20% » comme sur le modèle ;
   « MONTANT TOTAL » pour le total HT ; lignes « Acompte n°1 (20 %) » et « Reste à payer ».
 - **Date** : « 1er » pour le premier jour du mois ; mois avec une majuscule (« 14 Septembre 2026 »).
+- **Saisie des montants** : « 150.000 » ou « 45,000 » (un seul séparateur suivi de 3 chiffres)
+  sont lus comme des milliers dans les prix et montants en Ariary ; « 12,5 » reste décimal.
+  Les quantités gardent la virgule décimale (« 1.500 » = 1,5). « Ar » ou « Ariary » à la fin
+  d'un montant est accepté.
+- **Grands montants** : une valeur trop longue pour sa case (prix à 9 chiffres, quantité de
+  10 000, unité « Rouleau »…) est affichée en plus petit au lieu d'être coupée.
 - **Lignes** : une nouvelle ligne est vide (le montant s'affiche quand quantité et prix sont
   saisis) ; toutes les lignes sont numérotées ; une quantité ou un prix négatif est accepté
   (remise) ; une saisie invalide vaut 0.
@@ -115,16 +140,22 @@ Pris sans pouvoir demander, à revoir si besoin :
   « PAIEMENT : EN ESPECES » et « NUMERO DU COMPTE BANCAIRE : BRED … » (virement coché par
   défaut). Le titre disparaît s'il n'y a rien dessous. Mobile Money a été retiré.
 - **Acomptes** : orthographe « acompte » (avec un seul c). Les pourcentages s'appliquent au
-  total TTC. Un acompte déduit ne fait jamais passer le reste à payer sous zéro. L'échéancier
+  total TTC et sont arrondis sur leur cumul : 20 % + 30 % + 50 % font exactement le total, sans
+  écart d'un ariary. Un acompte déduit ne fait jamais passer le reste à payer sous zéro (au-delà,
+  il est plafonné et signalé). Le montant arrêté est toujours le reste à payer : identique au TTC
+  tant qu'aucun acompte n'est déduit (cas normal d'un devis). L'échéancier
   type 20 / 30 / 50 (Début des travaux / Mi-parcours des travaux / Fin des travaux) se modifie
   dans `src/js/emetteur.js`. Passer un devis en facture déduit d'office le premier acompte s'il
-  n'y en a aucun de déduit. Les documents de l'ancienne version avec une « avance » sont
+  n'y en a aucun de déduit (revenir aussitôt en devis annule cette déduction). « Nouveau »
+  reprend l'échéancier en pourcentages : un acompte saisi en Ar est converti en %. Les documents de l'ancienne version avec une « avance » sont
   convertis en un acompte déduit.
 - **Signature** : deux cases, « Afficher la signature » et « Afficher le cachet » ; encre bleue
   (noire au choix) ; à l'import, le fond blanc est rendu transparent (option) ; la signature
   se pose sur la partie droite du cachet ; encre du cachet `#2A2EAE`, relevée sur le modèle.
 - **Numérotation** : « Nouveau » part du dernier document créé du même type (sinon du numéro
-  affiché, sinon `1 /ERZ/ FACPRO /AA` ou `1 /ERZ/ DEVIS /AA`). « Dupliquer » donne le numéro
+  affiché, sinon `1 /ERZ/ FACPRO /AA` ou `1 /ERZ/ DEVIS /AA`) et saute tout numéro déjà pris.
+  Basculer Devis ↔ Facture donne le numéro suivant de l'autre série (revenir rend l'ancien
+  numéro) : jamais de devis numéroté « FACPRO » ni de doublon. « Dupliquer » donne le numéro
   suivant et la date du jour. « Nouveau » garde le type, la ville, la TVA, l'échéancier
   d'acomptes (facture : seul le premier déduit), le paiement et les options de signature du
   document précédent.
@@ -133,6 +164,16 @@ Pris sans pouvoir demander, à revoir si besoin :
 - **Hors-ligne strict** : correcteur orthographique désactivé (il téléchargerait des
   dictionnaires) et toute requête réseau de la page est bloquée.
 - **Montant au-delà de 999 999 999 999 Ar** : la phrase d'arrêté affiche « (MONTANT HORS LIMITE) ».
+- **Historique** : la liste lit les fichiers `documents\*.json` (une copie faite à la main dans
+  l'Explorateur, du type « … - Copie.json », est ignorée). Le statut « Payée » est enregistré
+  directement dans la facture, avec la date. L'export Excel est un CSV (séparateur « ; »,
+  dates jj/mm/aaaa, montants sans espaces) qui s'ouvre directement dans Excel.
+- **Limite connue** : une désignation si longue qu'une seule ligne du tableau dépasse une page
+  entière (environ 70 lignes de texte) ne peut pas être coupée proprement : scindez-la en
+  plusieurs lignes du tableau.
+- **Équipe de vérification** : quatre relectures indépendantes (code, interface avec vraies
+  frappes, calculs et français, mise en page PDF sur ~110 PDF) ont été menées ; leurs constats
+  ont tous été corrigés et sont couverts par l'autotest.
 - **Vérification du build** : l'environnement de build est sous Linux, où un `.exe` Windows ne
   peut pas être lancé. Le code empaqueté (`app.asar`) a passé l'autotest complet avec
   Electron, et le workflow GitHub Actions lance réellement `DevisPro.exe` sous Windows.
