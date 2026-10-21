@@ -32,6 +32,9 @@
     corps: $('#corps-lignes'),
     blocFin: $('#bloc-fin'),
     paiements: $('#paiements'),
+    titreModalites: $('#titre-modalites'),
+    echeancier: $('#echeancier'),
+    aideModalites: $('#aide-modalites'),
     arretePhrase: $('#arrete-phrase'),
     arreteChiffres: $('#arrete-chiffres'),
     zoneSignature: $('#zone-signature'),
@@ -108,13 +111,6 @@
       return option;
     }));
 
-    const operateurs = $('#paiement-mm-operateur');
-    operateurs.replaceChildren(...Emetteur.operateursMobileMoney.map((o) => {
-      const option = document.createElement('option');
-      option.value = o;
-      option.textContent = o;
-      return option;
-    }));
   }
 
   // ===========================================================================
@@ -292,7 +288,7 @@
     el.dateTexte.textContent = Calc.formaterDateLongue(doc.date) || 'Choisir la date';
     el.libelleNumero.textContent = (doc.type === 'devis' ? 'DEVIS' : 'FACTURE') + ' N°:';
 
-    // Phrase d'arrêté (montant TTC, ou total si la TVA est désactivée)
+    // Phrase d'arrêté : facture → reste à payer ; devis → total TTC (ou total sans TVA)
     try {
       el.arretePhrase.textContent = NombreEnLettres.phraseArrete(doc.type, totaux.arrete);
     } catch {
@@ -302,12 +298,16 @@
     }
     el.arreteChiffres.textContent = '(Ar ' + Calc.formaterMontant(totaux.arrete) + ')';
 
-    rafraichirPaiements();
+    rafraichirModalites(totaux);
     rafraichirSignature();
     rafraichirBarreOutils(totaux);
   }
 
-  /** Ligne vide puis lignes de totaux dans le bloc de fin du tableau. */
+  /**
+   * Ligne vide puis lignes de totaux dans le bloc de fin du tableau.
+   * La dernière ligne du tableau (rangée dans ce même bloc) n'est JAMAIS retirée du DOM :
+   * sinon le champ en cours de saisie perdrait le focus à chaque frappe.
+   */
   function rafraichirTotaux(t) {
     const derniere = $('tr.ligne', el.blocFin);
     const lignes = [];
@@ -317,8 +317,8 @@
     for (let i = 0; i < 5; i++) espace.append(creer('td'));
     lignes.push(espace);
 
-    const total = (cle, libelle, valeur) => {
-      const tr = creer('tr', 'total');
+    const total = (cle, libelle, valeur, classe) => {
+      const tr = creer('tr', 'total' + (classe ? ' ' + classe : ''));
       tr.dataset.total = cle;
       const libelleTd = creer('td', 'libelle', libelle);
       libelleTd.colSpan = 3;
@@ -333,29 +333,54 @@
       total('tva', 'TVA ' + Calc.formaterPourcent(t.taux) + '%', t.tva);
       total('ttc', 'MONTANT TOTAL TTC', t.ttc);
     }
-    if (t.avance > 0) {
-      total('avance', 'Avance (' + Calc.formaterPourcent(t.avancePourcent) + ' %)', t.avance);
-      total('reste', 'Reste à payer', t.reste);
-    }
+    // Acomptes déduits (autant qu'il y en a), puis le reste à payer
+    t.acomptes.forEach((a, i) => {
+      if (!a.deduit) return;
+      total('acompte-' + (i + 1), 'Acompte n°' + (i + 1) + ' (' + Calc.formaterPourcent(a.pourcent) + ' %)', a.montantDeduit, 'acompte');
+    });
+    if (t.totalAcomptes > 0) total('reste', 'Reste à payer', t.reste);
 
-    el.blocFin.replaceChildren(...(derniere ? [derniere] : []), ...lignes);
+    if (derniere) {
+      while (derniere.nextSibling) derniere.nextSibling.remove();
+      el.blocFin.append(...lignes);
+    } else {
+      el.blocFin.replaceChildren(...lignes);
+    }
   }
 
-  /** Bloc imprimé des modes de paiement (seuls les modes cochés). */
-  function rafraichirPaiements() {
-    const p = magasin.doc.paiement;
+  /**
+   * Bloc « MODALITÉS DE PAIEMENT » : échéancier des acomptes, puis moyens de paiement
+   * cochés (espèces, virement). Le titre n'apparaît que s'il y a quelque chose dessous.
+   */
+  function rafraichirModalites(t) {
+    const doc = magasin.doc;
+
+    const echeancier = [];
+    doc.acomptes.forEach((a, i) => {
+      const calcul = t.acomptes[i];
+      echeancier.push(
+        creer('span', 'n-acompte', 'Acompte n°' + (i + 1)),
+        creer('span', 'pourcent-acompte', Calc.formaterPourcent(calcul.pourcent) + ' %'),
+        creer('span', 'libelle-acompte', a.libelle.trim()),
+        creer('span', 'montant-acompte', Calc.formaterMontant(calcul.montant) + ' Ar'),
+        creer('span', 'etat-acompte', calcul.deduit ? '(déduit)' : '')
+      );
+    });
+    el.echeancier.replaceChildren(...echeancier);
+
+    const p = doc.paiement;
     const lignes = [];
     const ajouter = (libelle, valeur) => {
       lignes.push(creer('span', 'libelle', libelle), creer('span', 'deux-points', ':'), creer('span', 'valeur', valeur));
     };
     if (p.especes) ajouter('PAIEMENT', 'EN ESPECES');
-    if (p.mobileMoney.actif) {
-      ajouter('MOBILE MONEY', [p.mobileMoney.operateur.toUpperCase(), p.mobileMoney.numero.trim()].filter(Boolean).join('  '));
-    }
     if (p.virement.actif) {
       ajouter('NUMERO DU COMPTE BANCAIRE', [p.virement.banque.trim(), p.virement.compte.trim()].filter(Boolean).join('  '));
     }
     el.paiements.replaceChildren(...lignes);
+
+    el.titreModalites.hidden = !echeancier.length && !lignes.length;
+    el.aideModalites.hidden = echeancier.length > 0;
   }
 
   /** Cachet et image de signature selon les cases « Afficher ». */
@@ -379,7 +404,11 @@
     const t = totaux || Calc.calculerTotaux(doc);
     $$('.bascule-type button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === doc.type)));
     indicateur($('#btn-tva'), t.tvaActive ? Calc.formaterPourcent(t.taux) + ' %' : 'non');
-    indicateur($('#btn-avance'), t.avance > 0 ? Calc.formaterPourcent(t.avancePourcent) + ' %' : '');
+    const deduits = t.acomptes.filter((a) => a.deduit).length;
+    indicateur($('#btn-acomptes'), t.acomptes.length ? deduits + '/' + t.acomptes.length : '');
+    $('#btn-acomptes').title = t.acomptes.length
+      ? t.acomptes.length + ' acompte(s) dans l’échéancier, dont ' + deduits + ' déduit(s)'
+      : 'Acomptes : échéancier de paiement et acomptes déduits';
 
     const modifie = magasin.estModifie();
     el.etat.classList.toggle('modifie', modifie);
@@ -535,10 +564,12 @@
     if (!(await confirmerAbandon())) return;
     const actuel = magasin.doc;
     const doc = Etat.documentVierge();
-    // On garde les réglages du document précédent (type, ville, TVA, paiement, signature)
+    // On garde les réglages du document précédent (type, ville, TVA, échéancier, paiement, signature) ;
+    // dans l'échéancier repris, seul le premier acompte est déduit sur une facture
     doc.type = actuel.type;
     doc.ville = actuel.ville || doc.ville;
     doc.tva = Etat.cloner(actuel.tva);
+    doc.acomptes = Etat.echeancierPourNouveau(Etat.cloner(actuel.acomptes), doc.type);
     doc.paiement = Etat.cloner(actuel.paiement);
     doc.afficherCachet = actuel.afficherCachet;
     doc.afficherSignature = actuel.afficherSignature;
@@ -603,9 +634,19 @@
     }
   }
 
+  /**
+   * Bascule Devis / Facture. Un devis devenu facture sans acompte déduit
+   * déduit son premier acompte (première facture), modifiable dans « Acomptes ».
+   */
   function changerType(type) {
-    if (magasin.doc.type === type) return;
-    magasin.modifier((doc) => { doc.type = type; }, 'type');
+    const doc = magasin.doc;
+    if (doc.type === type) return;
+    const deduirePremier = type === 'facture' && doc.acomptes.length > 0 && !doc.acomptes.some((a) => a.deduit);
+    magasin.modifier((d) => {
+      d.type = type;
+      if (deduirePremier) d.acomptes[0].deduit = true;
+    }, 'type');
+    if (deduirePremier) notifier('Première facture : l’acompte n°1 est déduit. Modifiable dans « Acomptes ».');
   }
 
   function brancherBarreOutils() {
@@ -616,7 +657,7 @@
     $('#btn-imprimer').addEventListener('click', actionImprimer);
     $$('.bascule-type button').forEach((b) => b.addEventListener('click', () => changerType(b.dataset.type)));
     $('#btn-tva').addEventListener('click', ouvrirTva);
-    $('#btn-avance').addEventListener('click', ouvrirAvance);
+    $('#btn-acomptes').addEventListener('click', ouvrirAcomptes);
     $('#btn-paiement').addEventListener('click', ouvrirPaiement);
     $('#btn-signer').addEventListener('click', ouvrirSigner);
 
@@ -789,58 +830,176 @@
   }
 
   // ===========================================================================
-  // Modale « Avance » : % et Ar synchronisés, bornés entre 0 et le TTC
+  // Modale « Acomptes » : échéancier (autant d'acomptes que voulu),
+  // % et Ar synchronisés, libellé libre, case « Déduit » par acompte
   // ===========================================================================
 
-  function afficherAvance(sauf) {
+  /** Construit le tableau de la fenêtre (ouverture, ajout, suppression). */
+  function afficherListeAcomptes() {
     const doc = magasin.doc;
-    const t = Calc.calculerTotaux(doc);
-    $('#avance-ttc').textContent = Calc.formaterMontant(t.ttc);
-    $$('input[name="avance-mode"]').forEach((r) => { r.checked = r.value === doc.avance.mode; });
-    if (sauf !== 'pourcent') $('#avance-pourcent').value = Calc.formaterPourcent(t.avancePourcent);
-    if (sauf !== 'montant') $('#avance-montant').value = Calc.formaterMontant(t.avance);
-  }
+    const champ = (classe, valeur, mode) => {
+      const input = creer('input', classe);
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.inputMode = mode;
+      input.value = valeur;
+      return input;
+    };
+    const avecUnite = (input, unite, classe) => {
+      const span = creer('span', 'avec-unite' + (classe ? ' ' + classe : ''));
+      span.append(input, creer('span', '', unite));
+      return span;
+    };
+    $('#liste-acomptes').replaceChildren(...doc.acomptes.map((a, i) => {
+      const tr = creer('tr');
+      tr.dataset.index = String(i);
+      const pourcent = champ('pourcent', '', 'decimal');
+      pourcent.setAttribute('aria-label', 'Pourcentage de l’acompte ' + (i + 1));
+      const montant = champ('montant', '', 'numeric');
+      montant.setAttribute('aria-label', 'Montant de l’acompte ' + (i + 1));
+      const libelle = champ('libelle', a.libelle, 'text');
+      libelle.placeholder = 'Ex. Début des travaux';
+      libelle.setAttribute('aria-label', 'Libellé de l’acompte ' + (i + 1));
+      const deduit = creer('input', 'deduit');
+      deduit.type = 'checkbox';
+      deduit.checked = a.deduit;
+      deduit.title = 'Déduire cet acompte du total de ce document';
+      const supprimer = creer('button', 'supprimer', '×');
+      supprimer.type = 'button';
+      supprimer.title = 'Supprimer cet acompte';
 
-  function ouvrirAvance() {
-    afficherAvance();
-    $('#modale-avance').showModal();
-    (magasin.doc.avance.mode === 'montant' ? $('#avance-montant') : $('#avance-pourcent')).select();
-  }
-
-  function brancherAvance() {
-    $('#avance-pourcent').addEventListener('input', (e) => {
-      magasin.modifier((doc) => {
-        doc.avance.mode = 'pourcent';
-        doc.avance.pourcent = Calc.lireDecimal(e.target.value);
-        doc.avance.montant = Calc.calculerTotaux(doc).avance;
-      }, 'avance');
-      afficherAvance('pourcent');
-    });
-    $('#avance-montant').addEventListener('input', (e) => {
-      magasin.modifier((doc) => {
-        doc.avance.mode = 'montant';
-        doc.avance.montant = Calc.lireEntier(e.target.value);
-        doc.avance.pourcent = Calc.calculerTotaux(doc).avancePourcent;
-      }, 'avance');
-      afficherAvance('montant');
-    });
-    // En quittant un champ, la valeur bornée est réaffichée
-    $('#avance-pourcent').addEventListener('change', () => afficherAvance());
-    $('#avance-montant').addEventListener('change', () => afficherAvance());
-    $$('input[name="avance-mode"]').forEach((r) => r.addEventListener('change', () => {
-      const t = Calc.calculerTotaux(magasin.doc);
-      magasin.modifier((doc) => {
-        doc.avance.mode = r.value;
-        doc.avance.pourcent = t.avancePourcent;
-        doc.avance.montant = t.avance;
-      }, 'avance');
-      afficherAvance();
-      (r.value === 'pourcent' ? $('#avance-pourcent') : $('#avance-montant')).focus();
+      const tdPourcent = creer('td');
+      tdPourcent.append(avecUnite(pourcent, '%'));
+      const tdMontant = creer('td');
+      tdMontant.append(avecUnite(montant, 'Ar', 'large'));
+      const tdLibelle = creer('td');
+      tdLibelle.append(libelle);
+      const tdDeduit = creer('td', 'deduit');
+      tdDeduit.append(deduit);
+      const tdSupprimer = creer('td');
+      tdSupprimer.append(supprimer);
+      tr.append(creer('td', 'n', String(i + 1)), tdPourcent, tdMontant, tdLibelle, tdDeduit, tdSupprimer);
+      return tr;
     }));
-    $('#avance-aucune').addEventListener('click', () => {
-      magasin.modifier((doc) => { doc.avance = { mode: doc.avance.mode, pourcent: 0, montant: 0 }; }, 'avance');
-      afficherAvance();
+    $('#aucun-acompte').hidden = doc.acomptes.length > 0;
+    rafraichirFenetreAcomptes();
+  }
+
+  /**
+   * Met à jour pourcentages, montants et résumé de la fenêtre sans reconstruire les champs
+   * (`sauf` = champ en cours de saisie, laissé tel quel).
+   */
+  function rafraichirFenetreAcomptes(sauf) {
+    const t = Calc.calculerTotaux(magasin.doc);
+    $('#acomptes-ttc').textContent = Calc.formaterMontant(t.ttc);
+    $$('#liste-acomptes tr').forEach((tr) => {
+      const calcul = t.acomptes[Number(tr.dataset.index)];
+      if (!calcul) return;
+      const pourcent = $('input.pourcent', tr);
+      const montant = $('input.montant', tr);
+      if (pourcent !== sauf) pourcent.value = Calc.formaterPourcent(calcul.pourcent);
+      if (montant !== sauf) montant.value = Calc.formaterMontant(calcul.montant);
     });
+    const resume = $('#resume-acomptes');
+    resume.replaceChildren();
+    if (!t.acomptes.length) return;
+    const complet = t.pourcentEcheancier === 100;
+    const total = creer('span', complet ? '' : 'alerte', 'Échéancier : ' + Calc.formaterPourcent(t.pourcentEcheancier) + ' %');
+    if (!complet) total.title = 'Le total des acomptes ne fait pas 100 %';
+    resume.append(total, document.createTextNode(
+      ' · Déduit : ' + Calc.formaterMontant(t.totalAcomptes) + ' Ar · Reste à payer : ' + Calc.formaterMontant(t.reste) + ' Ar'));
+  }
+
+  function ouvrirAcomptes() {
+    afficherListeAcomptes();
+    $('#modale-acomptes').showModal();
+    const premier = $('#liste-acomptes input.pourcent');
+    (premier || $('#acompte-ajouter')).focus();
+  }
+
+  /** Nouvel acompte ; sur une facture, le tout premier est déduit d'office (première facture). */
+  function ajouterAcompte() {
+    magasin.modifier((doc) => {
+      const premierDeFacture = doc.type === 'facture' && doc.acomptes.length === 0;
+      doc.acomptes.push(Etat.nouvelAcompte(0, '', premierDeFacture));
+    }, 'acomptes');
+    afficherListeAcomptes();
+    const champs = $$('#liste-acomptes input.pourcent');
+    if (champs.length) champs[champs.length - 1].focus();
+  }
+
+  function brancherAcomptes() {
+    const corps = $('#liste-acomptes');
+    corps.addEventListener('input', (e) => {
+      const cible = e.target;
+      const tr = cible.closest('tr');
+      if (!tr || cible.type === 'checkbox') return;
+      const i = Number(tr.dataset.index);
+      magasin.modifier((doc) => {
+        const a = doc.acomptes[i];
+        if (cible.classList.contains('pourcent')) {
+          a.mode = 'pourcent';
+          a.pourcent = Calc.lireDecimal(cible.value);
+        } else if (cible.classList.contains('montant')) {
+          a.mode = 'montant';
+          a.montant = Calc.lireEntier(cible.value);
+        } else if (cible.classList.contains('libelle')) {
+          a.libelle = cible.value;
+        }
+      }, 'acomptes');
+      rafraichirFenetreAcomptes(cible);
+    });
+    // Case « Déduit » ; en quittant un champ, la valeur bornée est réaffichée
+    corps.addEventListener('change', (e) => {
+      const cible = e.target;
+      const tr = cible.closest('tr');
+      if (!tr) return;
+      if (cible.classList.contains('deduit')) {
+        magasin.modifier((doc) => { doc.acomptes[Number(tr.dataset.index)].deduit = cible.checked; }, 'acomptes');
+      }
+      rafraichirFenetreAcomptes();
+    });
+    corps.addEventListener('click', (e) => {
+      const bouton = e.target.closest('button.supprimer');
+      if (!bouton) return;
+      const i = Number(bouton.closest('tr').dataset.index);
+      magasin.modifier((doc) => doc.acomptes.splice(i, 1), 'acomptes');
+      afficherListeAcomptes();
+    });
+
+    $('#acompte-ajouter').addEventListener('click', ajouterAcompte);
+    $('#acompte-modele').addEventListener('click', async () => {
+      if (magasin.doc.acomptes.length) {
+        const choix = await question({
+          message: 'Remplacer les acomptes actuels par l’échéancier 20 / 30 / 50 ?',
+          boutons: ['Remplacer', 'Annuler'],
+          defaut: 0,
+          annuler: 1
+        });
+        if (choix !== 0) return;
+      }
+      magasin.modifier((doc) => { doc.acomptes = Etat.echeancierType(doc.type); }, 'acomptes');
+      afficherListeAcomptes();
+    });
+    $('#acomptes-vider').addEventListener('click', async () => {
+      if (!magasin.doc.acomptes.length) return;
+      const choix = await question({
+        type: 'warning',
+        message: 'Supprimer tous les acomptes de ce document ?',
+        boutons: ['Supprimer', 'Annuler'],
+        defaut: 1,
+        annuler: 1
+      });
+      if (choix !== 0) return;
+      magasin.modifier((doc) => { doc.acomptes = []; }, 'acomptes');
+      afficherListeAcomptes();
+    });
+
+    // Sur la page, le bloc « MODALITÉS DE PAIEMENT » ouvre les fenêtres correspondantes
+    el.echeancier.addEventListener('click', ouvrirAcomptes);
+    el.aideModalites.addEventListener('click', ouvrirAcomptes);
+    el.paiements.addEventListener('click', () => ouvrirPaiement());
   }
 
   // ===========================================================================
@@ -850,9 +1009,6 @@
   function ouvrirPaiement() {
     const p = magasin.doc.paiement;
     $('#paiement-especes').checked = p.especes;
-    $('#paiement-mm').checked = p.mobileMoney.actif;
-    $('#paiement-mm-operateur').value = p.mobileMoney.operateur;
-    $('#paiement-mm-numero').value = p.mobileMoney.numero;
     $('#paiement-virement').checked = p.virement.actif;
     $('#paiement-banque').value = p.virement.banque;
     $('#paiement-compte').value = p.virement.compte;
@@ -862,10 +1018,7 @@
   }
 
   function activerChampsPaiement() {
-    const mm = $('#paiement-mm').checked;
     const vir = $('#paiement-virement').checked;
-    $('#paiement-mm-operateur').disabled = !mm;
-    $('#paiement-mm-numero').disabled = !mm;
     $('#paiement-banque').disabled = !vir;
     $('#paiement-compte').disabled = !vir;
   }
@@ -878,9 +1031,6 @@
       });
     };
     lier('#paiement-especes', 'change', (p, c) => { p.especes = c.checked; });
-    lier('#paiement-mm', 'change', (p, c) => { p.mobileMoney.actif = c.checked; });
-    lier('#paiement-mm-operateur', 'change', (p, c) => { p.mobileMoney.operateur = c.value; });
-    lier('#paiement-mm-numero', 'input', (p, c) => { p.mobileMoney.numero = c.value; });
     lier('#paiement-virement', 'change', (p, c) => { p.virement.actif = c.checked; });
     lier('#paiement-banque', 'input', (p, c) => { p.virement.banque = c.value; });
     lier('#paiement-compte', 'input', (p, c) => { p.virement.compte = c.value; });
@@ -1027,7 +1177,7 @@
     brancherBarreOutils();
     brancherListe();
     brancherTva();
-    brancherAvance();
+    brancherAcomptes();
     brancherPaiement();
     brancherSigner();
     brancherFermeture();
@@ -1070,6 +1220,17 @@
   const texte = (noeud) => (noeud ? noeud.textContent.replace(/[  ]/g, ' ').trim() : '');
   const valeurTotal = (cle) => texte($('tr[data-total="' + cle + '"] .valeur', el.blocFin));
 
+  /** Lignes de l'échéancier imprimé, une chaîne par acompte. */
+  const lignesEcheancier = () => $$('.n-acompte', el.echeancier).map((n) => {
+    const morceaux = [n];
+    let suivant = n.nextElementSibling;
+    while (suivant && !suivant.classList.contains('n-acompte')) {
+      morceaux.push(suivant);
+      suivant = suivant.nextElementSibling;
+    }
+    return morceaux.map(texte).filter(Boolean).join(' ');
+  });
+
   /** Simule une saisie au clavier dans un champ. */
   function saisir(champ, valeur) {
     champ.value = valeur;
@@ -1108,7 +1269,9 @@
       egal('Libellé TVA', texte($('tr[data-total="tva"] .libelle', el.blocFin)), 'TVA 20%');
       egal('TVA', valeurTotal('tva'), '197 000');
       egal('MONTANT TOTAL TTC', valeurTotal('ttc'), '1 182 000');
-      verifier('Pas de ligne d’avance', !$('tr[data-total="avance"]', el.blocFin), 'ligne présente');
+      verifier('Pas de ligne d’acompte', !$('tr.acompte', el.blocFin) && !$('tr[data-total="reste"]', el.blocFin), 'ligne présente');
+      verifier('Titre « MODALITÉS DE PAIEMENT »', !el.titreModalites.hidden && texte(el.titreModalites) === 'MODALITÉS DE PAIEMENT', 'titre absent');
+      verifier('Mobile Money retiré', !$('#paiement-mm') && !/MOBILE/i.test(document.body.textContent), 'encore présent');
       egal('Phrase d’arrêté', texte(el.arretePhrase),
         'Arrêtée la présente facture à la somme de: UN MILLION CENT QUATRE VINGT DEUX MILLE ARIARY');
       egal('Montant arrêté en chiffres', texte(el.arreteChiffres), '(Ar 1 182 000)');
@@ -1143,32 +1306,67 @@
       $('#modale-tva').close();
       egal('TVA rétablie', valeurTotal('ttc'), '1 182 000');
 
-      // --- Avance : % → Ar, Ar → %, bornes
-      ouvrirAvance();
-      saisir($('#avance-pourcent'), '30');
-      egal('Avance 30 % → montant', $('#avance-montant').value.replace(/ /g, ' '), '354 600');
-      egal('Ligne Avance', texte($('tr[data-total="avance"] .libelle', el.blocFin)), 'Avance (30 %)');
-      egal('Montant de l’avance', valeurTotal('avance'), '354 600');
-      egal('Reste à payer', valeurTotal('reste'), '827 400');
-      saisir($('#avance-montant'), '591000');
-      egal('Avance 591 000 Ar → %', $('#avance-pourcent').value, '50');
-      egal('Reste à payer (50 %)', valeurTotal('reste'), '591 000');
-      saisir($('#avance-montant'), '99 999 999');
-      egal('Avance bornée au TTC', $('#avance-montant').value.replace(/ /g, ' '), '1 182 000');
-      egal('Avance bornée : 100 %', $('#avance-pourcent').value, '100');
-      saisir($('#avance-pourcent'), '0');
-      verifier('Avance nulle : lignes retirées', !$('tr[data-total="avance"]', el.blocFin) && !$('tr[data-total="reste"]', el.blocFin), 'lignes encore présentes');
-      $('#modale-avance').close();
+      // --- Acomptes : échéancier 20 / 30 / 50 ; première facture → seul le n°1 est déduit
+      ouvrirAcomptes();
+      $('#acompte-modele').click();
+      const acomptes = (classe) => $$('#liste-acomptes input.' + classe);
+      const valeurs = (classe) => acomptes(classe).map((c) => c.value.replace(/\u00A0/g, ' ')).join(' | ');
+      egal('Échéancier : 3 acomptes', acomptes('pourcent').length, 3);
+      egal('Pourcentages de l’échéancier', valeurs('pourcent'), '20 | 30 | 50');
+      egal('Montants de l’échéancier', valeurs('montant'), '236 400 | 354 600 | 591 000');
+      egal('Première facture : seul le n°1 est déduit', acomptes('deduit').map((c) => c.checked).join(','), 'true,false,false');
+      egal('Ligne « Acompte n°1 »', texte($('tr[data-total="acompte-1"] .libelle', el.blocFin)), 'Acompte n°1 (20 %)');
+      egal('Montant de l’acompte n°1', valeurTotal('acompte-1'), '236 400');
+      egal('Reste à payer', valeurTotal('reste'), '945 600');
+      egal('Facture : arrêté = reste à payer', texte(el.arretePhrase),
+        'Arrêtée la présente facture à la somme de: NEUF CENT QUARANTE CINQ MILLE SIX CENTS ARIARY');
+      egal('Facture : reste en chiffres', texte(el.arreteChiffres), '(Ar 945 600)');
+      egal('Échéancier imprimé', lignesEcheancier().join(' / '),
+        'Acompte n°1 20 % Début des travaux 236 400 Ar (déduit) / Acompte n°2 30 % Mi-parcours des travaux 354 600 Ar'
+        + ' / Acompte n°3 50 % Fin des travaux 591 000 Ar');
 
-      // --- Paiement : Mobile Money + espèces imprimés, virement retiré
+      // Deuxième facture : acomptes n°1 et n°2 déduits ; libellé modifié
+      acomptes('deduit')[1].click();
+      saisir(acomptes('libelle')[1], 'Pose du carrelage');
+      egal('Acompte n°2 déduit', valeurTotal('acompte-2'), '354 600');
+      egal('Reste après deux acomptes', valeurTotal('reste'), '591 000');
+      egal('Libellé modifié imprimé', lignesEcheancier()[1], 'Acompte n°2 30 % Pose du carrelage 354 600 Ar (déduit)');
+
+      // Saisie en Ar → % recalculé ; bornes
+      saisir(acomptes('montant')[0], '300 000');
+      egal('Acompte en Ar → %', acomptes('pourcent')[0].value, '25,38');
+      egal('Reste avec un acompte en Ar', valeurTotal('reste'), '527 400');
+      saisir(acomptes('montant')[0], '99 999 999');
+      egal('Acompte borné au TTC', acomptes('montant')[0].value.replace(/\u00A0/g, ' '), '1 182 000');
+      egal('Reste jamais négatif', valeurTotal('reste'), '0');
+      saisir(acomptes('pourcent')[0], '20');
+      egal('Retour à 20 %', valeurTotal('acompte-1'), '236 400');
+
+      // Autant d'acomptes qu'on veut : un 4e, puis suppression
+      $('#acompte-ajouter').click();
+      egal('Quatrième acompte ajouté', acomptes('pourcent').length, 4);
+      saisir(acomptes('pourcent')[3], '10');
+      verifier('Alerte si l’échéancier dépasse 100 %', !!$('#resume-acomptes .alerte') && /110/.test(texte($('#resume-acomptes'))), texte($('#resume-acomptes')));
+      $$('#liste-acomptes button.supprimer')[3].click();
+      egal('Quatrième acompte supprimé', acomptes('pourcent').length, 3);
+
+      // Devis : la phrase d'arrêté garde le TTC
+      $('.bascule-type button[data-type="devis"]').click();
+      egal('Devis : arrêté = TTC', texte(el.arreteChiffres), '(Ar 1 182 000)');
+      $('.bascule-type button[data-type="facture"]').click();
+      $('#modale-acomptes').close();
+      await deuxImages();
+      await api.selftest.exporter('apercu-acomptes');
+
+      // On revient au seul premier acompte déduit pour la suite
+      magasin.modifier((doc) => { doc.acomptes.forEach((a, i) => { a.deduit = i === 0; }); }, 'acomptes');
+
+      // --- Paiement : espèces imprimées, virement retiré, puis rétabli
       ouvrirPaiement();
       $('#paiement-especes').click();
-      $('#paiement-mm').click();
-      saisir($('#paiement-mm-numero'), '034 13 432 23');
       $('#paiement-virement').click();
-      egal('Paiements imprimés', texte(el.paiements), 'PAIEMENT:EN ESPECESMOBILE MONEY:MVOLA  034 13 432 23');
+      egal('Paiement en espèces imprimé', texte(el.paiements), 'PAIEMENT:EN ESPECES');
       $('#paiement-especes').click();
-      $('#paiement-mm').click();
       $('#paiement-virement').click();
       $('#modale-paiement').close();
 
@@ -1196,11 +1394,39 @@
       verifier('Enregistrement', enregistre && magasin.doc.id && !magasin.estModifie(), 'échec');
       const liste = await Stockage.lister();
       egal('Liste des documents', liste.length, 1);
-      egal('Total dans la liste', liste[0] && liste[0].total, 1182000);
+      egal('Total TTC dans la liste', liste[0] && liste[0].total, 1182000);
       egal('Client dans la liste', liste[0] && liste[0].client, 'VIVO ENERGIE Madagascar');
       const relu = await Stockage.lire(magasin.doc.id);
       egal('Relecture du document', relu && Etat.empreinte(relu), Etat.empreinte(magasin.doc));
       egal('Numéro suivant après enregistrement', await prochainNumero('facture'), '49 /ERZ/ FACPRO /26');
+
+      // --- Exemple de l'utilisateur : 562 500 Ar sans TVA, acompte de 20 % déduit → 450 000 Ar
+      const exemple = Etat.documentVierge();
+      exemple.lignes = [{ designation: 'Fourniture et pose carrelage', unite: 'm²', quantite: 12.5, prixUnitaire: 45000 }];
+      exemple.tva.active = false;
+      exemple.acomptes = [Etat.nouvelAcompte(20, 'Début des travaux', true)];
+      magasin.remplacer(exemple, true);
+      egal('Exemple 450 000 : en lettres', texte(el.arretePhrase),
+        'Arrêtée la présente facture à la somme de: QUATRE CENT CINQUANTE MILLE ARIARY');
+      egal('Exemple 450 000 : en chiffres', texte(el.arreteChiffres), '(Ar 450 000)');
+
+      // --- Frappe réelle au clavier dans la PREMIÈRE ligne d'un document neuf (une seule ligne)
+      magasin.remplacer(Etat.documentVierge(), true);
+      const taper = async (champ, valeur) => {
+        champ.focus();
+        await api.selftest.taper(valeur);
+        await deuxImages();
+      };
+      const premiere = () => lignesDom()[0];
+      await taper($('.designation', premiere()), 'Fourniture carrelage');
+      egal('Frappe dans la 1re ligne : désignation complète', $('.designation', premiere()).value, 'Fourniture carrelage');
+      verifier('Frappe dans la 1re ligne : le curseur reste dans le champ', document.activeElement === $('.designation', premiere()),
+        'focus sur ' + (document.activeElement && document.activeElement.className));
+      await taper($('.quantite', premiere()), '12,5');
+      egal('Frappe dans la 1re ligne : quantité', $('.quantite', premiere()).value, '12,5');
+      await taper($('.pu', premiere()), '45000');
+      egal('Frappe dans la 1re ligne : montant calculé', texte($('.montant', premiere())), '562 500');
+      egal('Frappe dans la 1re ligne : document à jour', magasin.doc.lignes[0].designation, 'Fourniture carrelage');
 
       // --- Document long : saut de page, en-tête répété, totaux avec la dernière ligne
       magasin.modifier((doc) => {

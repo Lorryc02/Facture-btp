@@ -28,7 +28,7 @@
     </div>
     <div class="groupe">
       <button type="button" id="btn-tva" title="Taux de TVA">TVA</button>
-      <button type="button" id="btn-avance" title="Avance (acompte)">Avance</button>
+      <button type="button" id="btn-acomptes" title="Acomptes : échéancier de paiement et acomptes déduits">Acomptes</button>
       <button type="button" id="btn-paiement" title="Modes de paiement">Paiement</button>
       <button type="button" id="btn-signer" title="Signature et cachet">Signer</button>
     </div>
@@ -96,7 +96,13 @@
       </div>
 
       <section class="pied" id="pied">
-        <div class="paiements" id="paiements"></div>
+        <!-- Modalités de paiement : échéancier d'acomptes + moyens de paiement -->
+        <div class="modalites" id="modalites">
+          <div class="titre-modalites" id="titre-modalites">MODALITÉS DE PAIEMENT</div>
+          <div class="echeancier" id="echeancier" title="Cliquer pour modifier les acomptes"></div>
+          <div class="paiements" id="paiements" title="Cliquer pour modifier les moyens de paiement"></div>
+          <button type="button" class="aide-modalites ecran-seulement" id="aide-modalites">+ Ajouter des acomptes (ex. 20 % / 30 % / 50 %)</button>
+        </div>
         <p class="arrete">
           <span id="arrete-phrase"></span><br>
           <span id="arrete-chiffres"></span>
@@ -148,51 +154,45 @@
     <div class="modale-pied"><button type="button" class="principal" data-fermer>OK</button></div>
   </dialog>
 
-  <dialog id="modale-avance" class="modale" aria-labelledby="titre-avance">
+  <dialog id="modale-acomptes" class="modale large" aria-labelledby="titre-acomptes">
     <div class="modale-entete">
-      <h2 id="titre-avance">Avance</h2>
+      <h2 id="titre-acomptes">Acomptes — échéancier de paiement</h2>
       <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
     </div>
-    <p class="aide">Total TTC du document : <strong id="avance-ttc"></strong> Ar</p>
-    <div class="choix-mode" role="radiogroup" aria-label="Saisie de l'avance">
-      <label class="case"><input type="radio" name="avance-mode" value="pourcent"> en %</label>
-      <label class="case"><input type="radio" name="avance-mode" value="montant"> en Ar</label>
+    <p class="aide">Total TTC du document : <strong id="acomptes-ttc"></strong> Ar.
+      Ajoutez autant d'acomptes que nécessaire. Le pourcentage et le montant se mettent à jour l'un
+      l'autre ; le libellé est libre. Les acomptes cochés « Déduit » sont retirés du total
+      (lignes « Acompte » puis « Reste à payer ») et, sur une facture, la phrase « Arrêtée… »
+      reprend le reste à payer. Pour une première facture, seul le premier acompte est déduit.</p>
+    <div class="liste-acomptes">
+      <table>
+        <thead>
+          <tr><th>N°</th><th class="nombre">Pourcentage</th><th class="nombre">Montant</th><th>Libellé (ex. Début des travaux)</th><th>Déduit</th><th></th></tr>
+        </thead>
+        <tbody id="liste-acomptes"></tbody>
+      </table>
+      <p id="aucun-acompte" class="vide-liste" hidden>Aucun acompte. Cliquez sur « + Ajouter un acompte » ou « Échéancier 20 / 30 / 50 ».</p>
     </div>
-    <div class="deux-colonnes">
-      <label class="champ-formulaire">Pourcentage
-        <span class="avec-unite"><input type="text" id="avance-pourcent" inputmode="decimal" autocomplete="off"><span>%</span></span>
-      </label>
-      <label class="champ-formulaire">Montant
-        <span class="avec-unite"><input type="text" id="avance-montant" inputmode="numeric" autocomplete="off"><span>Ar</span></span>
-      </label>
+    <div class="outils-acomptes">
+      <button type="button" id="acompte-ajouter">+ Ajouter un acompte</button>
+      <button type="button" id="acompte-modele">Échéancier 20 / 30 / 50</button>
+      <span class="resume-acomptes" id="resume-acomptes"></span>
     </div>
-    <p class="aide">Les deux champs se mettent à jour l'un l'autre. L'avance est limitée au total TTC.
-      Avec une avance, les lignes « Avance » et « Reste à payer » sont ajoutées sous le total.</p>
     <div class="modale-pied">
-      <button type="button" id="avance-aucune">Aucune avance</button>
+      <button type="button" id="acomptes-vider" class="danger">Supprimer tous les acomptes</button>
+      <span class="espace"></span>
       <button type="button" class="principal" data-fermer>OK</button>
     </div>
   </dialog>
 
   <dialog id="modale-paiement" class="modale" aria-labelledby="titre-paiement">
     <div class="modale-entete">
-      <h2 id="titre-paiement">Mode de paiement</h2>
+      <h2 id="titre-paiement">Moyens de paiement</h2>
       <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
     </div>
-    <p class="aide">Seuls les modes cochés sont imprimés sur le document.</p>
+    <p class="aide">Seuls les moyens cochés sont imprimés sous « MODALITÉS DE PAIEMENT ».</p>
     <fieldset class="bloc-paiement">
       <label class="case"><input type="checkbox" id="paiement-especes"> Espèces</label>
-    </fieldset>
-    <fieldset class="bloc-paiement">
-      <label class="case"><input type="checkbox" id="paiement-mm"> Mobile Money</label>
-      <div class="deux-colonnes">
-        <label class="champ-formulaire">Opérateur
-          <select id="paiement-mm-operateur"></select>
-        </label>
-        <label class="champ-formulaire">Numéro
-          <input type="text" id="paiement-mm-numero" inputmode="tel" autocomplete="off" placeholder="034 00 000 00">
-        </label>
-      </div>
     </fieldset>
     <fieldset class="bloc-paiement">
       <label class="case"><input type="checkbox" id="paiement-virement"> Virement bancaire</label>

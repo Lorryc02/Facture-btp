@@ -8,9 +8,8 @@
  *   destinataire, objet,
  *   lignes: [{ designation, unite, quantite: nombre|null, prixUnitaire: entier|null }],
  *   tva: { active, taux },
- *   avance: { mode: 'pourcent' | 'montant', pourcent, montant },
- *   paiement: { especes, mobileMoney: { actif, operateur, numero },
- *               virement: { actif, banque, compte } },
+ *   acomptes: [{ libelle, mode: 'pourcent' | 'montant', pourcent, montant, deduit }],
+ *   paiement: { especes, virement: { actif, banque, compte } },
  *   afficherCachet, afficherSignature, creeLe, modifieLe
  * }
  */
@@ -32,6 +31,32 @@
     return { designation: '', unite: '', quantite: null, prixUnitaire: null };
   }
 
+  /**
+   * Nouvel acompte de l'échéancier.
+   * @param {number} pourcent pourcentage du TTC
+   * @param {string} libelle ex. « Début des travaux »
+   * @param {boolean} deduit retiré du total sur ce document
+   */
+  function nouvelAcompte(pourcent, libelle, deduit) {
+    return { libelle: libelle || '', mode: 'pourcent', pourcent: pourcent || 0, montant: 0, deduit: !!deduit };
+  }
+
+  /**
+   * Échéancier type 20 / 30 / 50 (emetteur.js). Sur une facture, seul le premier
+   * acompte est déduit (première facture) ; sur un devis, aucun.
+   */
+  function echeancierType(type) {
+    return Emetteur.echeancierType.map((e, i) => nouvelAcompte(e.pourcent, e.libelle, type === 'facture' && i === 0));
+  }
+
+  /**
+   * Reprend un échéancier pour un nouveau document : mêmes pourcentages et libellés,
+   * déductions remises à zéro (facture : seul le premier acompte est déduit).
+   */
+  function echeancierPourNouveau(acomptes, type) {
+    return (acomptes || []).map((a, i) => Object.assign({}, a, { deduit: type === 'facture' && i === 0 }));
+  }
+
   /** Numéro proposé par défaut pour un type donné (année courante). */
   function numeroParDefaut(type, date) {
     const annee = String((date instanceof Date ? date : new Date()).getFullYear()).slice(-2);
@@ -51,10 +76,9 @@
       objet: '',
       lignes: [nouvelleLigne()],
       tva: { active: true, taux: 20 },
-      avance: { mode: 'pourcent', pourcent: 0, montant: 0 },
+      acomptes: [],
       paiement: {
         especes: false,
-        mobileMoney: { actif: false, operateur: Emetteur.operateursMobileMoney[0], numero: '' },
         virement: { actif: true, banque: Emetteur.banqueParDefaut.banque, compte: Emetteur.banqueParDefaut.compte }
       },
       afficherCachet: true,
@@ -81,14 +105,36 @@
     };
   }
 
+  /** Acompte normalisé (pourcentage à 2 décimales ou montant entier). */
+  function normaliserAcompte(acompte) {
+    const a = objet(acompte);
+    return {
+      libelle: texte(a.libelle, ''),
+      mode: a.mode === 'montant' ? 'montant' : 'pourcent',
+      pourcent: Calc.lireDecimal(a.pourcent),
+      montant: Calc.lireEntier(a.montant),
+      deduit: booleen(a.deduit, false)
+    };
+  }
+
+  /**
+   * Échéancier normalisé. Les documents de la première version avaient une seule
+   * « avance » : elle devient un acompte déduit.
+   */
+  function normaliserAcomptes(source) {
+    if (Array.isArray(source.acomptes)) return source.acomptes.map(normaliserAcompte);
+    const avance = objet(source.avance);
+    const valeur = avance.mode === 'montant' ? Calc.lireEntier(avance.montant) : Calc.lireDecimal(avance.pourcent);
+    if (valeur > 0) return [Object.assign(normaliserAcompte(avance), { deduit: true })];
+    return [];
+  }
+
   /** Complète et corrige un document lu sur disque. */
   function normaliser(source) {
     const s = objet(source);
     const defaut = documentVierge();
     const tva = objet(s.tva);
-    const avance = objet(s.avance);
     const paiement = objet(s.paiement);
-    const mm = objet(paiement.mobileMoney);
     const vir = objet(paiement.virement);
     const lignes = Array.isArray(s.lignes) ? s.lignes.map(normaliserLigne) : [];
     return {
@@ -105,18 +151,9 @@
         active: booleen(tva.active, true),
         taux: tva.taux === undefined ? 20 : Calc.borner(Calc.lireDecimal(tva.taux), 0, 100)
       },
-      avance: {
-        mode: avance.mode === 'montant' ? 'montant' : 'pourcent',
-        pourcent: Calc.lireDecimal(avance.pourcent),
-        montant: Calc.lireEntier(avance.montant)
-      },
+      acomptes: normaliserAcomptes(s),
       paiement: {
         especes: booleen(paiement.especes, false),
-        mobileMoney: {
-          actif: booleen(mm.actif, false),
-          operateur: texte(mm.operateur, defaut.paiement.mobileMoney.operateur),
-          numero: texte(mm.numero, '')
-        },
         virement: {
           actif: booleen(vir.actif, defaut.paiement.virement.actif),
           banque: texte(vir.banque, defaut.paiement.virement.banque),
@@ -231,6 +268,9 @@
   return {
     VERSION,
     nouvelleLigne,
+    nouvelAcompte,
+    echeancierType,
+    echeancierPourNouveau,
     numeroParDefaut,
     documentVierge,
     documentExemple,

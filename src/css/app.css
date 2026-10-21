@@ -148,6 +148,35 @@ body {
   }
 }
 
+/* Bloc des modalités : cliquable à l'écran pour ouvrir les fenêtres Acomptes / Paiement */
+@media screen {
+  .echeancier,
+  .paiements {
+    cursor: pointer;
+  }
+
+  .echeancier:hover,
+  .paiements:hover {
+    outline: 1px dashed rgba(0, 112, 192, 0.45);
+    outline-offset: 1mm;
+  }
+}
+
+.aide-modalites {
+  margin-top: 1.5mm;
+  padding: 3px 10px;
+  border: 1px dashed #9fb3c8;
+  border-radius: 4px;
+  background: #f5f9fc;
+  color: var(--ui-accent);
+  font: 12px var(--ui-police);
+  cursor: pointer;
+}
+
+.aide-modalites[hidden] {
+  display: none;
+}
+
 .aide-signature {
   position: absolute;
   inset: auto 0 -6mm 0;
@@ -468,6 +497,108 @@ body {
   padding: 24px;
   text-align: center;
   color: var(--ui-gris);
+}
+
+/* Acomptes */
+.liste-acomptes {
+  margin-top: 6px;
+  border: 1px solid #e3e8ed;
+  border-radius: 6px;
+  max-height: 45vh;
+  overflow: auto;
+}
+
+.liste-acomptes table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.liste-acomptes th,
+.liste-acomptes td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #eef1f4;
+  text-align: left;
+}
+
+.liste-acomptes th {
+  position: sticky;
+  top: 0;
+  background: #f7f9fb;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-gris);
+}
+
+.liste-acomptes th.nombre {
+  text-align: right;
+}
+
+.liste-acomptes td.n {
+  width: 28px;
+  font-weight: 600;
+  color: var(--ui-gris);
+}
+
+.liste-acomptes input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--ui-bordure);
+  border-radius: 4px;
+  font: 13px var(--ui-police);
+}
+
+.liste-acomptes input[type="text"]:focus {
+  border-color: var(--ui-accent);
+  outline: 2px solid rgba(0, 112, 192, 0.2);
+}
+
+.liste-acomptes .avec-unite {
+  width: 120px;
+}
+
+.liste-acomptes .avec-unite.large {
+  width: 150px;
+}
+
+.liste-acomptes td.deduit {
+  text-align: center;
+}
+
+.liste-acomptes td.deduit input {
+  width: 17px;
+  height: 17px;
+}
+
+.liste-acomptes .supprimer {
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  color: var(--ui-gris) !important;
+}
+
+.liste-acomptes .supprimer:hover {
+  border-color: var(--ui-danger) !important;
+  color: var(--ui-danger) !important;
+}
+
+.outils-acomptes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.resume-acomptes {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ui-gris);
+}
+
+.resume-acomptes .alerte {
+  color: #b54708;
+  font-weight: 600;
 }
 
 /* Signature */

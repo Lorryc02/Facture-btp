@@ -115,7 +115,7 @@ ipcMain.handle('docs:lister', async () => {
       client: Etat.nomClient(doc),
       date: doc.date,
       dateTexte: Calc.formaterDateLongue(doc.date),
-      total: totaux.arrete,
+      total: totaux.ttc,
       creeLe: doc.creeLe,
       modifieLe: doc.modifieLe
     });
@@ -306,6 +306,18 @@ ipcMain.handle('selftest:exporter', async (_e, nom) => {
   const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
   console.log('[selftest] exporté : ' + path.join(dossier, base + '.pdf') + ' (' + pages + ' page(s)) + .png');
   return { dossier, pages };
+});
+
+// Frappe réelle au clavier (caractère par caractère) dans le champ qui a le focus
+ipcMain.handle('selftest:taper', async (_e, texte) => {
+  if (!MODE_SELFTEST) throw new Error('Réservé à l’autotest');
+  fenetre.focus();
+  fenetre.webContents.focus();
+  for (const caractere of String(texte || '')) {
+    await fenetre.webContents.insertText(caractere);
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  return true;
 });
 
 ipcMain.handle('selftest:terminer', async (_e, rapport) => {

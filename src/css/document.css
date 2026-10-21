@@ -289,14 +289,60 @@ input.champ.numero {
   page-break-inside: avoid;
 }
 
-.paiements {
-  margin-top: 5mm;
+.modalites {
+  margin-top: 3mm;
   padding-left: var(--largeur-col-num);
+  font-size: 10pt;
+}
+
+/* Titre en gras « MODALITÉS DE PAIEMENT » (masqué s'il n'y a rien dessous) */
+.titre-modalites {
+  margin-bottom: 1.5mm;
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+.titre-modalites[hidden] {
+  display: none;
+}
+
+/* Échéancier : « Acompte n°1   20 %   Début des travaux   236 400 Ar   (déduit) » */
+.echeancier {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content max-content;
+  column-gap: 3mm;
+  row-gap: 0.8mm;
+  margin-bottom: 1.5mm;
+  padding-left: 3mm;
+}
+
+.echeancier:empty {
+  display: none;
+}
+
+.echeancier .n-acompte {
+  font-weight: bold;
+}
+
+.echeancier .pourcent-acompte,
+.echeancier .montant-acompte {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.echeancier .libelle-acompte {
+  overflow-wrap: anywhere;
+}
+
+.echeancier .etat-acompte {
+  font-style: italic;
+}
+
+.paiements {
   display: grid;
   grid-template-columns: max-content max-content auto;
   column-gap: 4mm;
   row-gap: 1.2mm;
-  font-size: 10pt;
   font-weight: bold;
   font-style: italic;
 }
@@ -312,6 +358,11 @@ input.champ.numero {
 .paiements .valeur {
   white-space: pre-wrap;
   word-spacing: 1.2mm;
+}
+
+/* Lignes « Acompte n°… » des totaux : le libellé peut passer à la ligne */
+.total.acompte .libelle {
+  white-space: normal;
 }
 
 .arrete {

@@ -18,14 +18,14 @@ test('facture du modèle : HT 985 000, TVA 197 000, TTC 1 182 000', () => {
       { designation: 'Peinture (L)', quantite: '5', prixUnitaire: '96 000' }
     ],
     tva: { active: true, taux: '20' },
-    avance: { mode: 'pourcent', pourcent: 0 }
+    acomptes: []
   };
   const t = Calc.calculerTotaux(doc);
   assert.deepEqual(t.montants, [75000, 60000, 50000, 50000, 270000, 480000]);
   assert.equal(t.ht, 985000);
   assert.equal(t.tva, 197000);
   assert.equal(t.ttc, 1182000);
-  assert.equal(t.avance, 0);
+  assert.equal(t.totalAcomptes, 0);
   assert.equal(t.reste, 1182000);
   assert.equal(t.arrete, 1182000);
   assert.equal(Calc.formaterMontant(t.ttc), `1${NBSP}182${NBSP}000`);
@@ -87,32 +87,90 @@ test('TVA : arrondi, taux décimal, désactivation', () => {
   assert.equal(t.tva, 0);
 });
 
-test('avance en % ou en Ar, synchronisée et bornée entre 0 et le TTC', () => {
-  assert.deepEqual(Calc.calculerAvance(1182000, { mode: 'pourcent', pourcent: '30' }), { montant: 354600, pourcent: 30 });
-  assert.deepEqual(Calc.calculerAvance(1182000, { mode: 'montant', montant: '354 600' }), { montant: 354600, pourcent: 30 });
-  assert.deepEqual(Calc.calculerAvance(300, { mode: 'montant', montant: '100' }), { montant: 100, pourcent: 33.33 });
-  assert.deepEqual(Calc.calculerAvance(1000, { mode: 'pourcent', pourcent: '150' }), { montant: 1000, pourcent: 100 });
-  assert.deepEqual(Calc.calculerAvance(1000, { mode: 'pourcent', pourcent: '-5' }), { montant: 0, pourcent: 0 });
-  assert.deepEqual(Calc.calculerAvance(1000, { mode: 'montant', montant: '5000' }), { montant: 1000, pourcent: 100 });
-  assert.deepEqual(Calc.calculerAvance(1000, { mode: 'montant', montant: '-1' }), { montant: 0, pourcent: 0 });
-  assert.deepEqual(Calc.calculerAvance(0, { mode: 'montant', montant: '500' }), { montant: 0, pourcent: 0 });
-  assert.deepEqual(Calc.calculerAvance(1000, undefined), { montant: 0, pourcent: 0 });
+test('un acompte en % ou en Ar, synchronisé et borné entre 0 et le TTC', () => {
+  assert.deepEqual(Calc.calculerAcompte(1182000, { mode: 'pourcent', pourcent: '30' }), { montant: 354600, pourcent: 30 });
+  assert.deepEqual(Calc.calculerAcompte(1182000, { mode: 'montant', montant: '354 600' }), { montant: 354600, pourcent: 30 });
+  assert.deepEqual(Calc.calculerAcompte(300, { mode: 'montant', montant: '100' }), { montant: 100, pourcent: 33.33 });
+  assert.deepEqual(Calc.calculerAcompte(1000, { mode: 'pourcent', pourcent: '150' }), { montant: 1000, pourcent: 100 });
+  assert.deepEqual(Calc.calculerAcompte(1000, { mode: 'pourcent', pourcent: '-5' }), { montant: 0, pourcent: 0 });
+  assert.deepEqual(Calc.calculerAcompte(1000, { mode: 'montant', montant: '5000' }), { montant: 1000, pourcent: 100 });
+  assert.deepEqual(Calc.calculerAcompte(1000, { mode: 'montant', montant: '-1' }), { montant: 0, pourcent: 0 });
+  assert.deepEqual(Calc.calculerAcompte(0, { mode: 'montant', montant: '500' }), { montant: 0, pourcent: 0 });
+  assert.deepEqual(Calc.calculerAcompte(1000, undefined), { montant: 0, pourcent: 0 });
+});
 
+const echeancier = (...deduits) => [
+  { mode: 'pourcent', pourcent: 20, libelle: 'Début des travaux', deduit: !!deduits[0] },
+  { mode: 'pourcent', pourcent: 30, libelle: 'Mi-parcours', deduit: !!deduits[1] },
+  { mode: 'pourcent', pourcent: 50, libelle: 'Fin des travaux', deduit: !!deduits[2] }
+];
+const modele = (type, acomptes) => ({
+  type,
+  lignes: [{ quantite: '1', prixUnitaire: '985 000' }],
+  tva: { active: true, taux: 20 },
+  acomptes
+});
+
+test('échéancier 20 / 30 / 50 : première facture, seul le premier acompte est déduit', () => {
+  const t = Calc.calculerTotaux(modele('facture', echeancier(true)));
+  assert.equal(t.ttc, 1182000);
+  assert.deepEqual(t.acomptes.map((a) => a.montant), [236400, 354600, 591000]);
+  assert.deepEqual(t.acomptes.map((a) => a.montantDeduit), [236400, 0, 0]);
+  assert.equal(t.pourcentEcheancier, 100);
+  assert.equal(t.totalAcomptes, 236400);
+  assert.equal(t.reste, 945600);
+  assert.equal(t.arrete, 945600, 'facture : la phrase d’arrêté reprend le reste à payer');
+});
+
+test('plusieurs acomptes déduits, dans n’importe quel ordre', () => {
+  let t = Calc.calculerTotaux(modele('facture', echeancier(true, true)));
+  assert.equal(t.totalAcomptes, 591000);
+  assert.equal(t.reste, 591000);
+  t = Calc.calculerTotaux(modele('facture', echeancier(false, true, true)));
+  assert.equal(t.totalAcomptes, 945600);
+  assert.equal(t.reste, 236400);
+  t = Calc.calculerTotaux(modele('facture', echeancier(true, true, true)));
+  assert.equal(t.reste, 0);
+  assert.equal(t.arrete, 0);
+  // Quatre acomptes de 25 % : on n'est pas limité à deux ou trois
+  const quatre = [1, 2, 3, 4].map((n) => ({ mode: 'pourcent', pourcent: 25, libelle: 'Étape ' + n, deduit: n <= 3 }));
+  t = Calc.calculerTotaux(modele('facture', quatre));
+  assert.equal(t.totalAcomptes, 886500);
+  assert.equal(t.reste, 295500);
+});
+
+test('acomptes déduits au-delà de 100 % : le reste ne devient jamais négatif', () => {
+  const trop = [
+    { mode: 'pourcent', pourcent: 80, deduit: true },
+    { mode: 'montant', montant: '500 000', deduit: true }
+  ];
+  const t = Calc.calculerTotaux(modele('facture', trop));
+  assert.deepEqual(t.acomptes.map((a) => a.montantDeduit), [945600, 236400]);
+  assert.equal(t.reste, 0);
+});
+
+test('devis : la phrase d’arrêté garde le total TTC, même avec des acomptes déduits', () => {
+  const t = Calc.calculerTotaux(modele('devis', echeancier(true)));
+  assert.equal(t.reste, 945600);
+  assert.equal(t.arrete, 1182000);
+});
+
+test('exemple utilisateur : 562 500 Ar sans TVA, acompte de 20 % déduit → 450 000 Ar', () => {
   const t = Calc.calculerTotaux({
-    lignes: [{ quantite: '1', prixUnitaire: '1 000 000' }],
-    tva: { active: true, taux: 20 },
-    avance: { mode: 'pourcent', pourcent: '25' }
+    type: 'facture',
+    lignes: [{ quantite: '12,5', prixUnitaire: '45 000' }],
+    tva: { active: false, taux: 20 },
+    acomptes: [{ mode: 'pourcent', pourcent: 20, libelle: 'Début des travaux', deduit: true }]
   });
-  assert.equal(t.ttc, 1200000);
-  assert.equal(t.avance, 300000);
-  assert.equal(t.avancePourcent, 25);
-  assert.equal(t.reste, 900000);
+  assert.equal(t.ttc, 562500);
+  assert.equal(t.totalAcomptes, 112500);
+  assert.equal(t.arrete, 450000);
 });
 
 test('document vide ou incomplet : zéros, jamais NaN', () => {
   for (const doc of [undefined, null, {}, { lignes: [{}] }, { lignes: [null] }, { tva: { active: true } }]) {
     const t = Calc.calculerTotaux(doc);
-    for (const cle of ['ht', 'tva', 'ttc', 'avance', 'reste', 'arrete']) {
+    for (const cle of ['ht', 'tva', 'ttc', 'totalAcomptes', 'reste', 'arrete']) {
       assert.equal(t[cle], 0, `${cle} pour ${JSON.stringify(doc)}`);
     }
   }

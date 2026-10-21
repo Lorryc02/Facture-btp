@@ -46,8 +46,15 @@
     /** Compte bancaire pré-rempli pour le virement. */
     banqueParDefaut: Object.freeze({ banque: 'BRED', compte: '00008 00016 05003027539 68' }),
 
-    /** Opérateurs Mobile Money proposés. */
-    operateursMobileMoney: Object.freeze(['Mvola', 'Orange Money', 'Airtel Money']),
+    /**
+     * Échéancier proposé par le bouton « Échéancier 20 / 30 / 50 » de la fenêtre « Acomptes »
+     * (pourcentages et libellés restent modifiables dans chaque document).
+     */
+    echeancierType: Object.freeze([
+      Object.freeze({ pourcent: 20, libelle: 'Début des travaux' }),
+      Object.freeze({ pourcent: 30, libelle: 'Mi-parcours des travaux' }),
+      Object.freeze({ pourcent: 50, libelle: 'Fin des travaux' })
+    ]),
 
     /**
      * Numéro proposé quand aucun document de ce type n'existe encore

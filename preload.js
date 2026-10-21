@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('devisPro', {
   selftest: {
     infos: () => appeler('selftest:infos'),
     exporter: (nomFichier) => appeler('selftest:exporter', nomFichier),
+    taper: (texte) => appeler('selftest:taper', texte),
     terminer: (rapport) => appeler('selftest:terminer', rapport)
   }
 });

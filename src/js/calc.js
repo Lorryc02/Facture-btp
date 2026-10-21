@@ -144,13 +144,13 @@
   }
 
   /**
-   * Avance : en pourcentage du TTC ou en montant fixe, bornée entre 0 et le TTC.
+   * Un acompte : en pourcentage du TTC ou en montant fixe, borné entre 0 et le TTC.
    * @param {number} ttc total TTC (entier)
-   * @param {{mode: 'pourcent'|'montant', pourcent: *, montant: *}} avance
+   * @param {{mode: 'pourcent'|'montant', pourcent: *, montant: *}} acompte
    * @returns {{montant: number, pourcent: number}} montant entier, pourcentage à 2 décimales
    */
-  function calculerAvance(ttc, avance) {
-    const a = avance || {};
+  function calculerAcompte(ttc, acompte) {
+    const a = acompte || {};
     const base = Math.max(0, Math.round(Number(ttc)) || 0);
     if (a.mode === 'montant') {
       const montant = borner(lireEntier(a.montant), 0, base);
@@ -163,9 +163,34 @@
   }
 
   /**
+   * Échéancier d'acomptes (autant qu'on veut : 20 %, 30 %, 50 %…).
+   * Les acomptes marqués « déduit » sont retirés du TTC, dans l'ordre,
+   * sans jamais rendre le reste à payer négatif.
+   * @returns {{ lignes: Array<{montant, pourcent, deduit, montantDeduit}>, totalDeduit: number, totalPourcent: number }}
+   */
+  function calculerAcomptes(ttc, acomptes) {
+    const base = Math.max(0, Math.round(Number(ttc)) || 0);
+    const liste = Array.isArray(acomptes) ? acomptes : [];
+    let disponible = base;
+    let totalDeduit = 0;
+    let totalCentiemes = 0;
+    const lignes = liste.map((a) => {
+      const { montant, pourcent } = calculerAcompte(base, a);
+      const deduit = !!(a && a.deduit);
+      const montantDeduit = deduit ? Math.min(montant, disponible) : 0;
+      disponible -= montantDeduit;
+      totalDeduit += montantDeduit;
+      totalCentiemes += Math.round(pourcent * 100);
+      return { montant, pourcent, deduit, montantDeduit };
+    });
+    return { lignes, totalDeduit, totalPourcent: totalCentiemes / 100 };
+  }
+
+  /**
    * Tous les totaux d'un document.
    *  HT = somme des lignes ; TVA = arrondi(HT × taux) ; TTC = HT + TVA ;
-   *  reste = TTC − avance ; montant arrêté = TTC (= HT si la TVA est désactivée).
+   *  reste à payer = TTC − acomptes déduits ;
+   *  montant arrêté : facture → reste à payer ; devis → TTC (= HT si la TVA est désactivée).
    */
   function calculerTotaux(doc) {
     const d = doc || {};
@@ -178,7 +203,8 @@
     const tva = tvaActive ? diviserArrondi(BigInt(ht) * BigInt(tauxCentiemes), 10000) : 0;
     const ttc = ht + tva;
 
-    const avance = calculerAvance(ttc, d.avance);
+    const echeancier = calculerAcomptes(ttc, d.acomptes);
+    const reste = ttc - echeancier.totalDeduit;
     return {
       montants,
       ht,
@@ -186,10 +212,11 @@
       taux: tauxCentiemes / 100,
       tva,
       ttc,
-      avance: avance.montant,
-      avancePourcent: avance.pourcent,
-      reste: ttc - avance.montant,
-      arrete: ttc
+      acomptes: echeancier.lignes,
+      totalAcomptes: echeancier.totalDeduit,
+      pourcentEcheancier: echeancier.totalPourcent,
+      reste,
+      arrete: d.type === 'devis' ? ttc : reste
     };
   }
 
@@ -282,7 +309,8 @@
     borner,
     diviserArrondi,
     montantLigne,
-    calculerAvance,
+    calculerAcompte,
+    calculerAcomptes,
     calculerTotaux,
     separerMilliers,
     formaterMontant,

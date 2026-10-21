@@ -81,6 +81,13 @@ test('entrées hors limites ou non entières', () => {
   assert.equal(nombreEnLettres(-5), 'MOINS CINQ');
 });
 
+test('phrase d’arrêté : exemple du reste à payer de 450 000 Ar', () => {
+  assert.equal(
+    phraseArrete('facture', 450000),
+    'Arrêtée la présente facture à la somme de: QUATRE CENT CINQUANTE MILLE ARIARY'
+  );
+});
+
 test('phrase d’arrêté selon le type', () => {
   assert.equal(
     phraseArrete('facture', 1182000),
