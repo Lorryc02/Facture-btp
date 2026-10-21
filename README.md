@@ -24,8 +24,17 @@ Page **Releases** du dépôt GitHub → « DevisPro (dernière version) » → f
    **+** (insérer dessous) et **×** (supprimer, annulable) apparaissent à droite, **↑ ↓** à gauche.
    Entrée dans la quantité ou le prix de la dernière ligne crée une nouvelle ligne.
    Une désignation peut tenir sur plusieurs lignes. L'unité se choisit dans la liste ou se tape librement.
-4. **TVA** (20 % par défaut, modifiable ou désactivée), **Acomptes**, **Paiement** (espèces,
-   virement) et **Signer** (dessin à la souris, au doigt ou au stylet, ou image importée).
+4. **TVA** (20 % par défaut, modifiable ou désactivée), **Remise**, **Acomptes**, **Paiement**
+   (espèces, virement) et **Signer** (dessin à la souris, au doigt ou au stylet, ou image importée).
+   - **Remise** : cochez « Appliquer une remise » et tapez le taux (ex. 10). Le tableau affiche
+     « MONTANT TOTAL » puis « MONTANT TOTAL REMISÉ (10 %) » ; la TVA et le TTC sont calculés sur le
+     montant remisé. « Enlever la remise » la retire. Le bouton affiche « −10 % » tant qu'elle
+     est active.
+   - **Avec ou sans « MODALITÉS DE PAIEMENT »** : dans les fenêtres **Paiement** et **Acomptes**,
+     la case « Imprimer le bloc MODALITÉS DE PAIEMENT ». Décochée, tout le bloc (titre,
+     échéancier, espèces, compte bancaire) disparaît du document, qui passe directement du
+     tableau à la phrase « Arrêtée… ». À l'écran, un rappel « MODALITÉS DE PAIEMENT masquées »
+     permet de les réafficher d'un clic (il n'est jamais imprimé).
 5. **Acomptes** : autant d'acomptes que nécessaire (bouton « Échéancier 20 / 30 / 50 » ou
    « + Ajouter un acompte »). Pour chacun : le pourcentage **ou** le montant en Ar (l'un met
    l'autre à jour), un libellé libre (« Début des travaux », « Fin des travaux »…) et une case
@@ -86,9 +95,9 @@ npm run icon         # régénère build/icon.ico
 ```
 
 Sous Linux : `xvfb-run -a npm run selftest -- --no-sandbox`.
-L'autotest vérifie aussi l'interface (109 contrôles : totaux, TVA, acomptes, paiement, lignes,
-frappe clavier réelle dans la première ligne, enregistrement, historique, document de plusieurs
-pages). L'exécutable accepte la même option :
+L'autotest vérifie aussi l'interface (126 contrôles : totaux, TVA, remise, acomptes, paiement,
+avec / sans modalités, lignes, frappe clavier réelle, enregistrement, historique, document de
+plusieurs pages). L'exécutable accepte la même option :
 `DevisPro.exe --selftest --selftest-dir=C:\chemin\sortie`.
 
 Le workflow GitHub Actions `.github/workflows/build-windows.yml` refait le build sous Windows,
@@ -126,6 +135,11 @@ Pris sans pouvoir demander, à revoir si besoin :
 - **Libellés** : « FACTURE N°: » collé au numéro et « TVA 20% » comme sur le modèle ;
   « MONTANT TOTAL » pour le total HT ; lignes « Acompte n°1 (20 %) » et « Reste à payer ».
 - **Date** : « 1er » pour le premier jour du mois ; mois avec une majuscule (« 14 Septembre 2026 »).
+- **Remise** : en pourcentage du MONTANT TOTAL (avant TVA), arrondie à l'ariary. Le tableau
+  n'affiche que la ligne demandée « MONTANT TOTAL REMISÉ (x %) » (le montant de la remise se lit
+  par différence ; il figure dans la colonne « Remise » de l'export Excel de l'historique). Les
+  acomptes en % portent sur le TTC remisé. « Nouveau » ne reprend pas la remise (propre à
+  chaque client) mais garde le choix avec / sans modalités.
 - **Saisie des montants** : « 150.000 » ou « 45,000 » (un seul séparateur suivi de 3 chiffres)
   sont lus comme des milliers dans les prix et montants en Ariary ; « 12,5 » reste décimal.
   Les quantités gardent la virgule décimale (« 1.500 » = 1,5). « Ar » ou « Ariary » à la fin

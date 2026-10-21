@@ -64,3 +64,13 @@ test('magasin : enregistrement d’une version précise et synchronisation sans 
   m.synchroniser((d) => { d.payee = true; });
   assert.equal(m.estModifie(), false);
 });
+
+test('remise et option des modalités normalisées (anciens documents compris)', () => {
+  const ancien = Etat.normaliser({ type: 'facture' });
+  assert.deepEqual(ancien.remise, { active: false, taux: 0 });
+  assert.equal(ancien.afficherModalites, true);
+  const doc = Etat.normaliser({ remise: { active: true, taux: '12,5' }, afficherModalites: false });
+  assert.deepEqual(doc.remise, { active: true, taux: 12.5 });
+  assert.equal(doc.afficherModalites, false);
+  assert.equal(Etat.normaliser({ remise: { active: true, taux: 250 } }).remise.taux, 100);
+});

@@ -95,6 +95,52 @@ test('TVA : arrondi, taux décimal, désactivation', () => {
   assert.equal(t.tva, 0);
 });
 
+test('remise en % : MONTANT TOTAL REMISÉ, TVA sur le montant remisé', () => {
+  const doc = {
+    lignes: [{ quantite: '1', prixUnitaire: '985 000' }],
+    tva: { active: true, taux: 20 },
+    remise: { active: true, taux: '10' }
+  };
+  let t = Calc.calculerTotaux(doc);
+  assert.equal(t.ht, 985000);
+  assert.equal(t.remiseActive, true);
+  assert.equal(t.tauxRemise, 10);
+  assert.equal(t.remise, 98500);
+  assert.equal(t.htRemise, 886500);
+  assert.equal(t.tva, 177300);
+  assert.equal(t.ttc, 1063800);
+  assert.equal(t.arrete, 1063800);
+  // Remise décimale et arrondi
+  t = Calc.calculerTotaux({ lignes: [{ quantite: 1, prixUnitaire: 1003 }], remise: { active: true, taux: '2,5' } });
+  assert.equal(t.remise, 25); // 25,075 → 25
+  assert.equal(t.htRemise, 978);
+  assert.equal(t.ttc, 978);
+  // Remise enlevée (case décochée) ou à 0 % : aucun effet
+  for (const remise of [{ active: false, taux: 10 }, { active: true, taux: 0 }, { active: true, taux: '' }, undefined]) {
+    t = Calc.calculerTotaux(Object.assign({}, doc, { remise }));
+    assert.equal(t.remiseActive, false);
+    assert.equal(t.remise, 0);
+    assert.equal(t.ttc, 1182000);
+  }
+  // Bornée à 100 %
+  t = Calc.calculerTotaux(Object.assign({}, doc, { remise: { active: true, taux: 150 } }));
+  assert.equal(t.htRemise, 0);
+  assert.equal(t.ttc, 0);
+});
+
+test('remise + acomptes : les acomptes portent sur le TTC remisé', () => {
+  const t = Calc.calculerTotaux({
+    type: 'facture',
+    lignes: [{ quantite: '1', prixUnitaire: '985 000' }],
+    tva: { active: true, taux: 20 },
+    remise: { active: true, taux: 10 },
+    acomptes: [{ mode: 'pourcent', pourcent: 20, deduit: true }, { mode: 'pourcent', pourcent: 80 }]
+  });
+  assert.equal(t.ttc, 1063800);
+  assert.equal(t.totalAcomptes, 212760);
+  assert.equal(t.arrete, 851040);
+});
+
 test('un acompte en % ou en Ar, synchronisé et borné entre 0 et le TTC', () => {
   assert.deepEqual(Calc.calculerAcompte(1182000, { mode: 'pourcent', pourcent: '30' }), { montant: 354600, pourcent: 30 });
   assert.deepEqual(Calc.calculerAcompte(1182000, { mode: 'montant', montant: '354 600' }), { montant: 354600, pourcent: 30 });

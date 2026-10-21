@@ -38,8 +38,8 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
-  padding: 8px 12px;
+  gap: 6px 8px;
+  padding: 8px 10px;
   background: var(--ui-barre);
   color: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
@@ -48,11 +48,11 @@ body {
 
 .barre-outils .groupe {
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
 .barre-outils button {
-  padding: 6px 9px;
+  padding: 6px 7px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: var(--ui-barre-bouton);
@@ -72,8 +72,8 @@ body {
 }
 
 .barre-outils .indicateur {
-  margin-left: 4px;
-  padding: 0 5px;
+  margin-left: 3px;
+  padding: 0 4px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.18);
   font-size: 11px;
@@ -87,7 +87,7 @@ body {
 
 .bascule-type button {
   background: transparent;
-  min-width: 64px;
+  min-width: 58px;
 }
 
 .bascule-type button[aria-pressed="true"] {
@@ -183,6 +183,25 @@ body {
 
 .aide-modalites[hidden] {
   display: none;
+}
+
+.modalites-masquees {
+  margin-top: 1mm;
+  padding: 3px 10px;
+  border: 1px dashed #c3ccd5;
+  border-radius: 4px;
+  background: #f7f9fb;
+  color: var(--ui-gris);
+  font: 12px var(--ui-police);
+  cursor: pointer;
+}
+
+.modale .option-modalites {
+  display: flex;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #f2f8fd;
 }
 
 /* Alertes à l'écran (jamais imprimées) */

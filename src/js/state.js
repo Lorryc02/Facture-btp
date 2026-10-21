@@ -8,8 +8,10 @@
  *   destinataire, objet,
  *   lignes: [{ designation, unite, quantite: nombre|null, prixUnitaire: entier|null }],
  *   tva: { active, taux },
+ *   remise: { active, taux },               (remise en % sur le montant total, avant TVA)
  *   acomptes: [{ libelle, mode: 'pourcent' | 'montant', pourcent, montant, deduit }],
  *   paiement: { especes, virement: { actif, banque, compte } },
+ *   afficherModalites,                      (bloc « MODALITÉS DE PAIEMENT » imprimé ou non)
  *   afficherCachet, afficherSignature,
  *   payee, payeeLe,                          (factures : réglée ou non, pour l'historique)
  *   origine: { id, type, numero } | null,   (devis facturé, facture précédente…)
@@ -104,11 +106,13 @@
       objet: '',
       lignes: [nouvelleLigne()],
       tva: { active: true, taux: 20 },
+      remise: { active: false, taux: 0 },
       acomptes: [],
       paiement: {
         especes: false,
         virement: { actif: true, banque: Emetteur.banqueParDefaut.banque, compte: Emetteur.banqueParDefaut.compte }
       },
+      afficherModalites: true,
       afficherCachet: true,
       afficherSignature: true,
       payee: false,
@@ -189,6 +193,10 @@
         active: booleen(tva.active, true),
         taux: tva.taux === undefined ? 20 : Calc.borner(Calc.lireDecimal(tva.taux), 0, 100)
       },
+      remise: {
+        active: booleen(objet(s.remise).active, false),
+        taux: Calc.borner(Calc.lireDecimal(objet(s.remise).taux), 0, 100)
+      },
       acomptes: normaliserAcomptes(s),
       paiement: {
         especes: booleen(paiement.especes, false),
@@ -198,6 +206,7 @@
           compte: texte(vir.compte, defaut.paiement.virement.compte)
         }
       },
+      afficherModalites: booleen(s.afficherModalites, true),
       afficherCachet: booleen(s.afficherCachet, true),
       afficherSignature: booleen(s.afficherSignature, true),
       payee: booleen(s.payee, false),

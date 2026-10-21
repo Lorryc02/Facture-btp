@@ -36,6 +36,8 @@
     echeancier: $('#echeancier'),
     aideModalites: $('#aide-modalites'),
     aidePaiement: $('#aide-paiement'),
+    modalites: $('#modalites'),
+    modalitesMasquees: $('#modalites-masquees'),
     alertes: $('#alertes-ecran'),
     arretePhrase: $('#arrete-phrase'),
     arreteChiffres: $('#arrete-chiffres'),
@@ -371,6 +373,9 @@
     };
 
     total('ht', 'MONTANT TOTAL', t.ht);
+    if (t.remiseActive) {
+      total('remise', 'MONTANT TOTAL REMISÉ (' + Calc.formaterPourcent(t.tauxRemise) + '\u00A0%)', t.htRemise);
+    }
     if (t.tvaActive) {
       total('tva', 'TVA ' + Calc.formaterPourcent(t.taux) + '%', t.tva);
       total('ttc', 'MONTANT TOTAL TTC', t.ttc);
@@ -435,6 +440,8 @@
     el.paiements.replaceChildren(...lignes);
 
     el.titreModalites.hidden = !echeancier.length && !lignes.length;
+    // Option « sans » : tout le bloc (titre, échéancier, paiements) disparaît du document
+    el.modalites.classList.toggle('masquees', !doc.afficherModalites);
     el.aideModalites.hidden = echeancier.length > 0;
     el.aidePaiement.hidden = lignes.length > 0;
   }
@@ -481,6 +488,7 @@
     const t = totaux || Calc.calculerTotaux(doc);
     $$('.bascule-type button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === doc.type)));
     indicateur($('#btn-tva'), t.tvaActive ? Calc.formaterPourcent(t.taux) + ' %' : 'non');
+    indicateur($('#btn-remise'), t.remiseActive ? '−' + Calc.formaterPourcent(t.tauxRemise) + '\u00A0%' : '');
     const deduits = t.acomptes.filter((a) => a.deduit && a.montantDeduit > 0).length;
     indicateur($('#btn-acomptes'), t.acomptes.length
       ? (deduits ? '−' + Calc.formaterPourcent(t.ttc > 0 ? Math.round(t.totalAcomptes * 10000 / t.ttc) / 100 : 0) + '\u00A0%' : String(t.acomptes.length))
@@ -660,6 +668,7 @@
     doc.paiement = Etat.cloner(actuel.paiement);
     doc.afficherCachet = actuel.afficherCachet;
     doc.afficherSignature = actuel.afficherSignature;
+    doc.afficherModalites = actuel.afficherModalites;
     doc.numero = await prochainNumero(doc.type);
     magasin.remplacer(doc, true);
     notifier((doc.type === 'devis' ? 'Nouveau devis n° ' : 'Nouvelle facture n° ') + doc.numero);
@@ -776,6 +785,7 @@
     $('#btn-imprimer').addEventListener('click', actionImprimer);
     $$('.bascule-type button').forEach((b) => b.addEventListener('click', () => changerType(b.dataset.type)));
     $('#btn-tva').addEventListener('click', ouvrirTva);
+    $('#btn-remise').addEventListener('click', ouvrirRemise);
     $('#btn-acomptes').addEventListener('click', ouvrirAcomptes);
     $('#btn-paiement').addEventListener('click', ouvrirPaiement);
     $('#btn-signer').addEventListener('click', ouvrirSigner);
@@ -799,7 +809,7 @@
     });
 
     // TVA, Paiement, Acomptes : Entrée dans un champ = OK
-    $$('#modale-tva, #modale-paiement, #modale-acomptes').forEach((d) => {
+    $$('#modale-tva, #modale-remise, #modale-paiement, #modale-acomptes').forEach((d) => {
       d.addEventListener('keydown', (e) => {
         const c = e.target;
         if (e.key !== 'Enter' || e.isComposing || c.tagName !== 'INPUT' || c.type === 'checkbox') return;
@@ -1141,10 +1151,10 @@
       return /[;"\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
     };
     const dateFr = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso.split('-').reverse().join('/') : '');
-    const entete = ['Type', 'Numéro', 'Date', 'Client', 'Objet', 'Total HT', 'TVA', 'Total TTC',
+    const entete = ['Type', 'Numéro', 'Date', 'Client', 'Objet', 'Total HT', 'Remise', 'TVA', 'Total TTC',
       'Acomptes déduits', 'Net à payer', 'Statut', 'Payée le', 'Origine'];
     const lignes = liste.map((d) => [
-      libelleType(d.type), d.numero, dateFr(d.date), d.client, d.objet, d.ht, d.tva, d.total,
+      libelleType(d.type), d.numero, dateFr(d.date), d.client, d.objet, d.ht, d.remise || 0, d.tva, d.total,
       d.acomptesDeduits, d.arrete, LIBELLES_STATUT[statutDocument(d, factures)], dateFr(d.payeeLe),
       d.origine ? libelleType(d.origine.type) + ' ' + d.origine.numero : ''
     ]);
@@ -1223,6 +1233,50 @@
     });
     $('#tva-taux').addEventListener('change', (e) => {
       e.target.value = Calc.formaterPourcent(magasin.doc.tva.taux);
+    });
+  }
+
+  // ===========================================================================
+  // Modale « Remise » : remise en % sur le montant total (ajouter / enlever)
+  // ===========================================================================
+
+  function afficherApercuRemise() {
+    const t = Calc.calculerTotaux(magasin.doc);
+    $('#remise-apercu').textContent = t.remiseActive
+      ? 'Remise : ' + montantAr(t.remise) + ' — MONTANT TOTAL REMISÉ (' + Calc.formaterPourcent(t.tauxRemise)
+        + '\u00A0%) : ' + montantAr(t.htRemise) + ' (au lieu de ' + montantAr(t.ht) + ').'
+      : 'Aucune remise : le tableau affiche le MONTANT TOTAL sans réduction.';
+  }
+
+  function ouvrirRemise() {
+    const remise = magasin.doc.remise;
+    $('#remise-active').checked = remise.active;
+    $('#remise-taux').value = remise.taux ? Calc.formaterPourcent(remise.taux) : '';
+    $('#remise-taux').disabled = !remise.active;
+    afficherApercuRemise();
+    $('#modale-remise').showModal();
+    if (remise.active) $('#remise-taux').select();
+    else $('#remise-active').focus();
+  }
+
+  function brancherRemise() {
+    $('#remise-active').addEventListener('change', (e) => {
+      magasin.modifier((doc) => { doc.remise.active = e.target.checked; }, 'remise');
+      $('#remise-taux').disabled = !e.target.checked;
+      afficherApercuRemise();
+      if (e.target.checked) $('#remise-taux').focus();
+    });
+    $('#remise-taux').addEventListener('input', (e) => {
+      magasin.modifier((doc) => { doc.remise.taux = Calc.borner(Calc.lireDecimal(e.target.value), 0, 100); }, 'remise');
+      afficherApercuRemise();
+    });
+    $('#remise-taux').addEventListener('change', (e) => {
+      e.target.value = magasin.doc.remise.taux ? Calc.formaterPourcent(magasin.doc.remise.taux) : '';
+    });
+    $('#remise-enlever').addEventListener('click', () => {
+      magasin.modifier((doc) => { doc.remise = { active: false, taux: 0 }; }, 'remise');
+      $('#modale-remise').close();
+      notifier('Remise enlevée.');
     });
   }
 
@@ -1316,6 +1370,7 @@
 
   function ouvrirAcomptes() {
     afficherListeAcomptes();
+    $('#acomptes-afficher-modalites').checked = magasin.doc.afficherModalites;
     $('#modale-acomptes').showModal();
     const premier = $('#liste-acomptes input.pourcent');
     (premier || $('#acompte-ajouter')).focus();
@@ -1416,6 +1471,16 @@
     el.aideModalites.addEventListener('click', ouvrirAcomptes);
     el.paiements.addEventListener('click', () => ouvrirPaiement());
     el.aidePaiement.addEventListener('click', () => ouvrirPaiement());
+
+    // Avec / sans « MODALITÉS DE PAIEMENT »
+    $$('input.afficher-modalites').forEach((c) => c.addEventListener('change', () => {
+      magasin.modifier((doc) => { doc.afficherModalites = c.checked; }, 'modalites');
+      $$('input.afficher-modalites').forEach((autre) => { autre.checked = c.checked; });
+    }));
+    el.modalitesMasquees.addEventListener('click', () => {
+      magasin.modifier((doc) => { doc.afficherModalites = true; }, 'modalites');
+      notifier('Les modalités de paiement seront imprimées.');
+    });
   }
 
   // ===========================================================================
@@ -1428,6 +1493,7 @@
     $('#paiement-virement').checked = p.virement.actif;
     $('#paiement-banque').value = p.virement.banque;
     $('#paiement-compte').value = p.virement.compte;
+    $('#paiement-afficher-modalites').checked = magasin.doc.afficherModalites;
     activerChampsPaiement();
     $('#modale-paiement').showModal();
     $('#paiement-especes').focus();
@@ -1597,6 +1663,7 @@
     brancherBarreOutils();
     brancherHistorique();
     brancherTva();
+    brancherRemise();
     brancherAcomptes();
     brancherPaiement();
     brancherSigner();
@@ -1741,6 +1808,35 @@
       $('#modale-tva').close();
       egal('TVA rétablie', valeurTotal('ttc'), '1 182 000');
 
+      // --- Remise en % : ajoutée au clavier (frappe réelle), puis enlevée
+      ouvrirRemise();
+      $('#remise-active').click();
+      await attendre(() => document.activeElement === $('#remise-taux'));
+      await api.selftest.taper('10');
+      await deuxImages();
+      egal('Remise : taux tapé au clavier', $('#remise-taux').value, '10');
+      egal('Ligne « MONTANT TOTAL REMISÉ (10 %) »', texte($('tr[data-total="remise"] .libelle', el.blocFin)), 'MONTANT TOTAL REMISÉ (10 %)');
+      egal('Montant total remisé', valeurTotal('remise'), '886 500');
+      egal('MONTANT TOTAL avant remise', valeurTotal('ht'), '985 000');
+      egal('TVA sur le montant remisé', valeurTotal('tva'), '177 300');
+      egal('TTC après remise', valeurTotal('ttc'), '1 063 800');
+      egal('Arrêté après remise', texte(el.arretePhrase),
+        'Arrêtée la présente facture à la somme de: UN MILLION SOIXANTE TROIS MILLE HUIT CENTS ARIARY');
+      egal('Ordre des lignes de total', $$('tr.total', el.blocFin).map((tr) => tr.dataset.total).join(','), 'ht,remise,tva,ttc');
+      egal('Indicateur du bouton Remise', texte($('#btn-remise .indicateur')), '−10 %');
+      $('#modale-remise').close();
+      await deuxImages();
+      await api.selftest.exporter('apercu-remise');
+      ouvrirRemise();
+      $('#remise-enlever').click();
+      verifier('Remise enlevée', !$('tr[data-total="remise"]', el.blocFin) && valeurTotal('ttc') === '1 182 000'
+        && !$('#btn-remise .indicateur'), valeurTotal('ttc'));
+      // Sans TVA : MONTANT TOTAL puis MONTANT TOTAL REMISÉ, arrêté sur le montant remisé
+      magasin.modifier((doc) => { doc.tva.active = false; doc.remise = { active: true, taux: 5 }; }, 'remise');
+      egal('Remise sans TVA : lignes', $$('tr.total', el.blocFin).map((tr) => tr.dataset.total).join(','), 'ht,remise');
+      egal('Remise sans TVA : arrêté', texte(el.arreteChiffres), '(Ar 935 750)');
+      magasin.modifier((doc) => { doc.tva.active = true; doc.remise = { active: false, taux: 0 }; }, 'remise');
+
       // --- Acomptes : échéancier 20 / 30 / 50 ; première facture → seul le n°1 est déduit
       ouvrirAcomptes();
       $('#acompte-modele').click();
@@ -1823,6 +1919,23 @@
       $('#paiement-especes').click();
       $('#paiement-virement').click();
       $('#modale-paiement').close();
+
+      // --- Option « sans MODALITÉS DE PAIEMENT » (jusqu'à la phrase d'arrêté), puis « avec »
+      ouvrirPaiement();
+      $('#paiement-afficher-modalites').click();
+      $('#modale-paiement').close();
+      await deuxImages();
+      verifier('Sans modalités : bloc masqué', el.modalites.classList.contains('masquees') && !el.titreModalites.offsetParent
+        && !el.echeancier.offsetParent && !el.paiements.offsetParent, 'bloc encore visible');
+      verifier('Sans modalités : rappel à l’écran', !!el.modalitesMasquees.offsetParent, 'pas de rappel');
+      verifier('Sans modalités : arrêté et signature conservés', !!el.arretePhrase.offsetParent && !!el.cachet.offsetParent, 'arrêté absent');
+      verifier('Sans modalités : même choix dans « Acomptes »', (ouvrirAcomptes(), !$('#acomptes-afficher-modalites').checked), 'case cochée');
+      $('#modale-acomptes').close();
+      await api.selftest.exporter('apercu-sans-modalites');
+      el.modalitesMasquees.click();
+      await deuxImages();
+      verifier('Avec modalités : bloc réaffiché', !el.modalites.classList.contains('masquees') && !!el.titreModalites.offsetParent
+        && !el.modalitesMasquees.offsetParent, 'bloc toujours masqué');
 
       // --- Lignes : ajout, saisie, calcul, suppression
       $('#btn-ajouter-ligne').click();
@@ -1914,8 +2027,8 @@
       verifier('Résumé de l’historique', /4 documents affichés/.test(texte($('#resume-historique'))) && /à encaisser/.test(texte($('#resume-historique'))),
         texte($('#resume-historique')));
       const csv = csvHistorique(documentsListes);
-      verifier('Export Excel : en-tête', csv.startsWith('Type;Numéro;Date;Client;Objet;Total HT;TVA;Total TTC;Acomptes déduits;Net à payer;Statut;Payée le;Origine'), csv.split('\n')[0]);
-      verifier('Export Excel : facture payée', /Facture;48 \/ERZ\/ FACPRO \/26;14\/09\/2026;VIVO ENERGIE Madagascar;.*;985000;197000;1182000;236400;945600;Payée;/.test(csv), csv);
+      verifier('Export Excel : en-tête', csv.startsWith('Type;Numéro;Date;Client;Objet;Total HT;Remise;TVA;Total TTC;Acomptes déduits;Net à payer;Statut;Payée le;Origine'), csv.split('\n')[0]);
+      verifier('Export Excel : facture payée', /Facture;48 \/ERZ\/ FACPRO \/26;14\/09\/2026;VIVO ENERGIE Madagascar;.*;985000;0;197000;1182000;236400;945600;Payée;/.test(csv), csv);
       $('#modale-historique').close();
 
       // --- Exemple de l'utilisateur : 562 500 Ar sans TVA, acompte de 20 % déduit → 450 000 Ar

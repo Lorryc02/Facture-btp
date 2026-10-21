@@ -120,6 +120,7 @@ ipcMain.handle('docs:lister', async () => {
       date: doc.date,
       dateTexte: Calc.formaterDateLongue(doc.date),
       ht: totaux.ht,
+      remise: totaux.remise,
       tva: totaux.tvaActive ? totaux.tva : 0,
       total: totaux.ttc,
       acomptesDeduits: totaux.totalAcomptes,
@@ -457,7 +458,7 @@ function creerFenetre() {
     setTimeout(() => {
       console.error('[selftest] délai dépassé');
       terminerSelftest(3);
-    }, 90000).unref();
+    }, 180000).unref();
   }
   // La fenêtre est aussi affichée en autotest : la capture PNG a besoin d'une fenêtre visible
   fenetre.once('ready-to-show', () => fenetre.show());

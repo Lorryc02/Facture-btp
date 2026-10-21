@@ -312,6 +312,15 @@ input.champ.numero {
   display: none;
 }
 
+/* Option « sans modalités » : tout le bloc disparaît du document (le rappel n'est qu'à l'écran) */
+.modalites.masquees > :not(.modalites-masquees) {
+  display: none !important;
+}
+
+.modalites:not(.masquees) > .modalites-masquees {
+  display: none;
+}
+
 /* Échéancier : « Acompte n°1   20 %   Début des travaux   236 400 Ar   (déduit) » */
 .echeancier {
   display: grid;
@@ -446,6 +455,10 @@ input.champ.numero {
   }
 
   .ecran-seulement {
+    display: none !important;
+  }
+
+  .modalites.masquees {
     display: none !important;
   }
 

@@ -28,6 +28,7 @@
     </div>
     <div class="groupe">
       <button type="button" id="btn-tva" title="Taux de TVA">TVA</button>
+      <button type="button" id="btn-remise" title="Remise en % sur le montant total (ajouter ou enlever)">Remise</button>
       <button type="button" id="btn-acomptes" title="Acomptes : échéancier de paiement et acomptes déduits">Acomptes</button>
       <button type="button" id="btn-paiement" title="Moyens de paiement (espèces, virement)">Paiement</button>
       <button type="button" id="btn-signer" title="Signature et cachet">Signer</button>
@@ -104,6 +105,9 @@
           <div class="titre-modalites" id="titre-modalites" title="Cliquez pour modifier les acomptes">MODALITÉS DE PAIEMENT</div>
           <div class="echeancier" id="echeancier" title="Cliquez pour modifier les acomptes"></div>
           <div class="paiements" id="paiements" title="Cliquez pour modifier les moyens de paiement"></div>
+          <!-- Bloc masqué (option « sans ») : rappel à l'écran seulement, rien n'est imprimé -->
+          <button type="button" class="modalites-masquees ecran-seulement" id="modalites-masquees"
+                  title="Cliquez pour imprimer à nouveau les modalités de paiement">MODALITÉS DE PAIEMENT masquées (non imprimées) — cliquez pour les afficher</button>
           <div class="aides-modalites ecran-seulement">
             <button type="button" class="aide-modalites" id="aide-modalites">+ Ajouter des acomptes (ex. 20 % / 30 % / 50 %)</button>
             <button type="button" class="aide-modalites" id="aide-paiement">+ Ajouter un moyen de paiement</button>
@@ -187,6 +191,25 @@
     <div class="modale-pied"><button type="button" class="principal" data-fermer>OK</button></div>
   </dialog>
 
+  <dialog id="modale-remise" class="modale" aria-labelledby="titre-remise">
+    <div class="modale-entete">
+      <h2 id="titre-remise">Remise</h2>
+      <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
+    </div>
+    <label class="case"><input type="checkbox" id="remise-active"> Appliquer une remise</label>
+    <label class="champ-formulaire">Taux de remise
+      <span class="avec-unite"><input type="text" id="remise-taux" inputmode="decimal" autocomplete="off"><span>%</span></span>
+    </label>
+    <p class="aide" id="remise-apercu"></p>
+    <p class="aide">La remise s'applique au MONTANT TOTAL, avant la TVA. Le tableau affiche alors la ligne
+      « MONTANT TOTAL REMISÉ (x %) », puis la TVA et le TTC calculés sur ce montant.</p>
+    <div class="modale-pied">
+      <button type="button" id="remise-enlever" class="danger">Enlever la remise</button>
+      <span class="espace"></span>
+      <button type="button" class="principal" data-fermer>OK</button>
+    </div>
+  </dialog>
+
   <dialog id="modale-acomptes" class="modale large" aria-labelledby="titre-acomptes">
     <div class="modale-entete">
       <h2 id="titre-acomptes">Acomptes — échéancier de paiement</h2>
@@ -206,6 +229,8 @@
       </table>
       <p id="aucun-acompte" class="vide-liste" hidden>Aucun acompte. Cliquez sur « + Ajouter un acompte » ou « Échéancier 20 / 30 / 50 ».</p>
     </div>
+    <label class="case option-modalites"><input type="checkbox" class="afficher-modalites" id="acomptes-afficher-modalites">
+      Imprimer le bloc « MODALITÉS DE PAIEMENT » (échéancier et moyens de paiement)</label>
     <div class="outils-acomptes">
       <button type="button" id="acompte-ajouter">+ Ajouter un acompte</button>
       <button type="button" id="acompte-modele">Échéancier 20 / 30 / 50</button>
@@ -223,6 +248,8 @@
       <h2 id="titre-paiement">Moyens de paiement</h2>
       <button type="button" class="fermer" data-fermer tabindex="-1" aria-label="Fermer">×</button>
     </div>
+    <label class="case option-modalites"><input type="checkbox" class="afficher-modalites" id="paiement-afficher-modalites">
+      Imprimer le bloc « MODALITÉS DE PAIEMENT » (décochez pour un document sans modalités)</label>
     <p class="aide">Seuls les moyens cochés sont imprimés sous « MODALITÉS DE PAIEMENT ».</p>
     <fieldset class="bloc-paiement">
       <label class="case"><input type="checkbox" id="paiement-especes"> Espèces</label>

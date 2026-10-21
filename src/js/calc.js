@@ -217,7 +217,8 @@
 
   /**
    * Tous les totaux d'un document.
-   *  HT = somme des lignes ; TVA = arrondi(HT × taux) ; TTC = HT + TVA ;
+   *  HT = somme des lignes ; remise = arrondi(HT × taux de remise) ; HT remisé = HT − remise ;
+   *  TVA = arrondi(HT remisé × taux) ; TTC = HT remisé + TVA ;
    *  reste à payer = TTC − acomptes déduits ;
    *  montant arrêté (phrase « Arrêtée… ») = reste à payer (= TTC s'il n'y a aucun acompte déduit,
    *  ce qui est le cas par défaut d'un devis ; = HT si la TVA est désactivée).
@@ -228,16 +229,25 @@
     const montants = lignes.map((l) => montantLigne(l && l.quantite, l && l.prixUnitaire));
     const ht = montants.reduce((somme, m) => somme + m, 0);
 
+    // Remise en % sur le montant total (avant TVA) : « MONTANT TOTAL REMISÉ (10 %) »
+    const tauxRemiseCentiemes = d.remise && d.remise.active ? borner(lireCentiemes(d.remise.taux), 0, 10000) : 0;
+    const remise = tauxRemiseCentiemes ? diviserArrondi(BigInt(ht) * BigInt(tauxRemiseCentiemes), 10000) : 0;
+    const htRemise = ht - remise;
+
     const tvaActive = !!(d.tva && d.tva.active);
     const tauxCentiemes = tvaActive ? borner(lireCentiemes(d.tva.taux), 0, 10000) : 0;
-    const tva = tvaActive ? diviserArrondi(BigInt(ht) * BigInt(tauxCentiemes), 10000) : 0;
-    const ttc = ht + tva;
+    const tva = tvaActive ? diviserArrondi(BigInt(htRemise) * BigInt(tauxCentiemes), 10000) : 0;
+    const ttc = htRemise + tva;
 
     const echeancier = calculerAcomptes(ttc, d.acomptes);
     const reste = ttc - echeancier.totalDeduit;
     return {
       montants,
       ht,
+      remiseActive: tauxRemiseCentiemes > 0,
+      tauxRemise: tauxRemiseCentiemes / 100,
+      remise,
+      htRemise,
       tvaActive,
       taux: tauxCentiemes / 100,
       tva,
