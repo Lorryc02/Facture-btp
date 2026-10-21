@@ -18,10 +18,18 @@ et le PDF ou l'impression reproduisent le modèle `reference/facture-modele.jpg`
    **+** (insérer dessous) et **×** (supprimer, annulable) apparaissent à droite, **↑ ↓** à gauche.
    Entrée dans la quantité ou le prix de la dernière ligne crée une nouvelle ligne.
    Une désignation peut tenir sur plusieurs lignes. L'unité se choisit dans la liste ou se tape librement.
-4. **TVA** (20 % par défaut, modifiable ou désactivée), **Avance** (en % ou en Ar, les deux
-   champs se mettent à jour l'un l'autre), **Paiement** (espèces, Mobile Money, virement)
-   et **Signer** (dessin à la souris, au doigt ou au stylet, ou image importée).
-5. **Enregistrer** (Ctrl+S), **Exporter PDF** (Ctrl+E, nom proposé
+4. **TVA** (20 % par défaut, modifiable ou désactivée), **Acomptes**, **Paiement** (espèces,
+   virement) et **Signer** (dessin à la souris, au doigt ou au stylet, ou image importée).
+5. **Acomptes** : autant d'acomptes que nécessaire (bouton « Échéancier 20 / 30 / 50 » ou
+   « + Ajouter un acompte »). Pour chacun : le pourcentage **ou** le montant en Ar (l'un met
+   l'autre à jour), un libellé libre (« Début des travaux », « Fin des travaux »…) et une case
+   **Déduit**. Les acomptes cochés sont retirés du total (lignes « Acompte n°… » puis
+   « Reste à payer »). Sur une **facture**, la phrase « Arrêtée la présente facture à la somme
+   de: … » reprend le **reste à payer** ; pour une première facture, seul le premier acompte est
+   déduit (cochez les suivants sur les factures suivantes). Sur un **devis**, la phrase garde le
+   total TTC. L'échéancier et les moyens de paiement sont imprimés sous le titre
+   **MODALITÉS DE PAIEMENT** (cliquez dessus pour les modifier).
+6. **Enregistrer** (Ctrl+S), **Exporter PDF** (Ctrl+E, nom proposé
    `Facture-48-ERZ-FACPRO-26.pdf`), **Imprimer** (Ctrl+P), **Ouvrir** (Ctrl+O : ouvrir,
    dupliquer, supprimer), **Nouveau** (Ctrl+N : numéro suivant automatique, ex.
    `48 /ERZ/ FACPRO /26` → `49 /ERZ/ FACPRO /26`).
@@ -60,8 +68,8 @@ npm run icon         # régénère build/icon.ico
 ```
 
 Sous Linux : `xvfb-run -a npm run selftest -- --no-sandbox`.
-L'autotest vérifie aussi l'interface (53 contrôles : totaux, TVA, avance, paiement, lignes,
-enregistrement, document de plusieurs pages). L'exécutable accepte la même option :
+L'autotest vérifie aussi l'interface (75 contrôles : totaux, TVA, acomptes, paiement, lignes,
+frappe clavier réelle dans la première ligne, enregistrement, document de plusieurs pages). L'exécutable accepte la même option :
 `DevisPro.exe --selftest --selftest-dir=C:\chemin\sortie`.
 
 Le workflow GitHub Actions `.github/workflows/build-windows.yml` refait le build sous Windows,
@@ -97,20 +105,29 @@ Pris sans pouvoir demander, à revoir si besoin :
 - **Mise en page** : marges PDF de 12 mm, plus un retrait intérieur de 5 mm sur les côtés et
   12 mm en haut pour retrouver la position du modèle (positions vérifiées à ±1 mm).
 - **Libellés** : « FACTURE N°: » collé au numéro et « TVA 20% » comme sur le modèle ;
-  « MONTANT TOTAL » pour le total HT ; lignes « Avance (30 %) » et « Reste à payer ».
+  « MONTANT TOTAL » pour le total HT ; lignes « Acompte n°1 (20 %) » et « Reste à payer ».
 - **Date** : « 1er » pour le premier jour du mois ; mois avec une majuscule (« 14 Septembre 2026 »).
 - **Lignes** : une nouvelle ligne est vide (le montant s'affiche quand quantité et prix sont
   saisis) ; toutes les lignes sont numérotées ; une quantité ou un prix négatif est accepté
   (remise) ; une saisie invalide vaut 0.
-- **Paiement imprimé**, dans l'ordre : « PAIEMENT : EN ESPECES », « MOBILE MONEY : MVOLA
-  034… », « NUMERO DU COMPTE BANCAIRE : BRED … ». Virement coché par défaut.
+- **Modalités de paiement imprimées** : titre en gras souligné « MODALITÉS DE PAIEMENT », puis
+  une ligne par acompte (« Acompte n°1  20 %  Début des travaux  236 400 Ar  (déduit) »), puis
+  « PAIEMENT : EN ESPECES » et « NUMERO DU COMPTE BANCAIRE : BRED … » (virement coché par
+  défaut). Le titre disparaît s'il n'y a rien dessous. Mobile Money a été retiré.
+- **Acomptes** : orthographe « acompte » (avec un seul c). Les pourcentages s'appliquent au
+  total TTC. Un acompte déduit ne fait jamais passer le reste à payer sous zéro. L'échéancier
+  type 20 / 30 / 50 (Début des travaux / Mi-parcours des travaux / Fin des travaux) se modifie
+  dans `src/js/emetteur.js`. Passer un devis en facture déduit d'office le premier acompte s'il
+  n'y en a aucun de déduit. Les documents de l'ancienne version avec une « avance » sont
+  convertis en un acompte déduit.
 - **Signature** : deux cases, « Afficher la signature » et « Afficher le cachet » ; encre bleue
   (noire au choix) ; à l'import, le fond blanc est rendu transparent (option) ; la signature
   se pose sur la partie droite du cachet ; encre du cachet `#2A2EAE`, relevée sur le modèle.
 - **Numérotation** : « Nouveau » part du dernier document créé du même type (sinon du numéro
   affiché, sinon `1 /ERZ/ FACPRO /AA` ou `1 /ERZ/ DEVIS /AA`). « Dupliquer » donne le numéro
-  suivant et la date du jour. « Nouveau » garde le type, la ville, la TVA, le paiement et les
-  options de signature du document précédent.
+  suivant et la date du jour. « Nouveau » garde le type, la ville, la TVA, l'échéancier
+  d'acomptes (facture : seul le premier déduit), le paiement et les options de signature du
+  document précédent.
 - **Brouillon** : écrit toutes les 3 s ; il est rouvert au lancement même après « Quitter sans
   enregistrer » (rien n'est perdu ; il reste marqué « Non enregistré »).
 - **Hors-ligne strict** : correcteur orthographique désactivé (il téléchargerait des
